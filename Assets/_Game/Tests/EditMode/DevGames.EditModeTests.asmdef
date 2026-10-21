@@ -1,0 +1,13 @@
+{
+  "name": "DevGames.EditModeTests",
+  "rootNamespace": "DevGames.Tests",
+  "references": [
+    "DevGames.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

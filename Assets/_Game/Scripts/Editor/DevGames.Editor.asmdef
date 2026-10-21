@@ -1,0 +1,12 @@
+{
+  "name": "DevGames.Editor",
+  "rootNamespace": "DevGames.Editor",
+  "references": [
+    "DevGames.Runtime",
+    "Unity.InputSystem",
+    "Unity.ugui"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}

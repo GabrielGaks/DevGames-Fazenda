@@ -1,0 +1,8 @@
+{
+  "name": "DevGames.Runtime",
+  "rootNamespace": "DevGames",
+  "references": [
+    "Unity.InputSystem",
+    "Unity.ugui"
+  ]
+}
