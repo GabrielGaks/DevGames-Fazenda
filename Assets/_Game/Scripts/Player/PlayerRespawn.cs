@@ -7,6 +7,7 @@ namespace DevGames.Player
     public sealed class PlayerRespawn : MonoBehaviour
     {
         [SerializeField] InputReader input;
+        [SerializeField] float voidHeight = -15f;
         Vector3 spawnPosition;
         Quaternion spawnRotation;
         CharacterController controller;
@@ -24,9 +25,13 @@ namespace DevGames.Player
 
         void Update()
         {
-            if (input?.ResetPressed == true) Respawn();
+            if (input?.ResetPressed == true || transform.position.y < voidHeight) Respawn();
         }
 
+        /// <summary>
+        /// Returns the player to the position and rotation captured when the level started.
+        /// The current attempt timer is preserved because the scene is not reloaded.
+        /// </summary>
         public void Respawn()
         {
             motor.ResetMotion();
