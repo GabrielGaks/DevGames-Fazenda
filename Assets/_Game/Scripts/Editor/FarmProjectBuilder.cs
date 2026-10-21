@@ -32,6 +32,11 @@ namespace DevGames.Editor
         const string TractorModel = Root + "/ThirdParty/Innerscene/Tractor/Tractor.fbx";
         const string BirdModel = Root + "/ThirdParty/Quaternius/Bird/Ernest.fbx";
         const string FarmProps = Root + "/ThirdParty/Quaternius/FarmProps/";
+        const string IslandPack = Root + "/ThirdParty/Whitebird/LowPolyIsland/Models/";
+        const string FoxIsle = Root + "/ThirdParty/FoxDev/FloatingIsle/Models/FloatingIsleModel.fbx";
+        const string CozyFarm = Root + "/ThirdParty/Styloo/CozyFarm/Models/";
+        const string SurvivalKit = Root + "/ThirdParty/Kenney/SurvivalKit/Models/";
+        const string AnimatedMenuVersion = "MENU_ANIMADO_V1";
 
         static readonly Color BarnRed = new(0.48f, 0.10f, 0.07f);
         static readonly Color Wood = new(0.30f, 0.17f, 0.08f);
@@ -62,18 +67,67 @@ namespace DevGames.Editor
             Debug.Log("DevGames Fazenda construída com sucesso.");
         }
 
+        [MenuItem("DevGames/Rebuild Animated Main Menu")]
+        public static void RebuildAnimatedMainMenu()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogError("Pare o Play Mode antes de reconstruir o menu principal.");
+                return;
+            }
+
+            var materials = new Dictionary<string, Material>();
+            foreach (var name in new[] { "BarnRed", "Wood", "Straw", "Green", "Roof", "Cream" })
+            {
+                var material = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/{name}.mat");
+                if (material == null)
+                {
+                    Debug.LogError($"Material do menu não encontrado: {name}. Execute DevGames > Build Farm Project.");
+                    return;
+                }
+                materials[name] = material;
+            }
+
+            CreateMainMenuScene(materials);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("MENU ANIMADO V1 salvo em MainMenu.unity.");
+        }
+
+        [InitializeOnLoadMethod]
+        static void ApplyAnimatedMenuOnce()
+        {
+            if (Application.isBatchMode) return;
+            var menuPath = $"{SceneRoot}/Menus/MainMenu.unity";
+            if (System.IO.File.Exists(menuPath) && System.IO.File.ReadAllText(menuPath).Contains(AnimatedMenuVersion)) return;
+            EditorApplication.delayCall += () =>
+            {
+                var activeScene = SceneManager.GetActiveScene();
+                if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || activeScene.isDirty)
+                {
+                    Debug.LogWarning("Menu animado pendente: salve a cena e use DevGames > Rebuild Animated Main Menu.");
+                    return;
+                }
+
+                var previousPath = activeScene.path;
+                RebuildAnimatedMainMenu();
+                if (!string.IsNullOrEmpty(previousPath) && previousPath != menuPath)
+                    EditorSceneManager.OpenScene(previousPath, OpenSceneMode.Single);
+            };
+        }
+
         /// <summary>Applies the organic farm revision and emits an unmistakable confirmation.</summary>
-        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V11")]
+        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V19")]
         public static void ApplyVisualFixV6()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V11.");
+                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V19.");
                 return;
             }
 
             BuildAll();
-            Debug.Log("FAZENDA VERTICAL V11 salva em Farm.unity - abra Bootstrap e pressione Play.");
+            Debug.Log("FAZENDA VERTICAL V19 salva em Farm.unity - abra Bootstrap e pressione Play.");
         }
 
         [InitializeOnLoadMethod]
@@ -81,7 +135,7 @@ namespace DevGames.Editor
         {
             if (Application.isBatchMode) return;
             var farmScene = $"{SceneRoot}/Levels/Farm.unity";
-            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V11")) return;
+            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V19")) return;
             EditorApplication.delayCall += () =>
             {
                 if (!EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isCompiling) ApplyVisualFixV6();
@@ -167,17 +221,129 @@ namespace DevGames.Editor
         static void CreateMainMenuScene(Dictionary<string, Material> materials)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            CreateMenuBackdrop(materials, "FAZENDA AO ENTARDECER");
+            var camera = CreateAnimatedMenuBackdrop(materials);
             var canvas = CreateCanvas("Main Menu Canvas");
             var controller = canvas.gameObject.AddComponent<MenuController>();
 
-            CreateText(canvas.transform, "Title", "O MENINO LOIRO\nE OS DEDOS PERDIDOS", 46, new Vector2(0.5f, 0.72f), new Vector2(900f, 180f), TextAnchor.MiddleCenter, Color.white);
-            CreateText(canvas.transform, "Subtitle", "Uma aventura de parkour vertical", 22, new Vector2(0.5f, 0.59f), new Vector2(700f, 50f), TextAnchor.MiddleCenter, new Color(1f, 0.85f, 0.58f));
-            var play = CreateButton(canvas.transform, "Play", "JOGAR", new Vector2(0.5f, 0.42f));
-            var quit = CreateButton(canvas.transform, "Quit", "SAIR", new Vector2(0.5f, 0.31f));
+            var panel = CreateMenuPanel(canvas.transform);
+            CreateText(panel, "Kicker", "UMA AVENTURA NA FAZENDA", 16, new Vector2(0.5f, 0.82f), new Vector2(560f, 36f), TextAnchor.MiddleLeft, new Color(0.95f, 0.71f, 0.36f));
+            var title = CreateText(panel, "Title", "O MENINO LOIRO\nE OS DEDOS PERDIDOS", 58, new Vector2(0.5f, 0.66f), new Vector2(560f, 180f), TextAnchor.MiddleLeft, new Color(1f, 0.96f, 0.87f));
+            title.fontStyle = FontStyle.Bold;
+            var shadow = title.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0.18f, 0.07f, 0.04f, 0.75f);
+            shadow.effectDistance = new Vector2(3f, -3f);
+            CreateText(panel, "Subtitle", "Corra, salte e encontre o que a fazenda esconde.", 22, new Vector2(0.5f, 0.48f), new Vector2(560f, 58f), TextAnchor.MiddleLeft, new Color(0.85f, 0.77f, 0.62f));
+            var play = CreateMenuButton(panel, "Play", "JOGAR", new Vector2(0.5f, 0.31f), true);
+            var quit = CreateMenuButton(panel, "Quit", "SAIR", new Vector2(0.5f, 0.18f), false);
             UnityEventTools.AddPersistentListener(play.onClick, controller.LoadLevelSelect);
             UnityEventTools.AddPersistentListener(quit.onClick, controller.Quit);
+            Object.FindAnyObjectByType<EventSystem>().firstSelectedGameObject = play.gameObject;
+            new GameObject(AnimatedMenuVersion);
             SaveScene(scene, $"{SceneRoot}/Menus/MainMenu.unity");
+        }
+
+        static Camera CreateAnimatedMenuBackdrop(Dictionary<string, Material> materials)
+        {
+            RenderSettings.ambientLight = new Color(0.42f, 0.35f, 0.29f);
+            RenderSettings.fog = true;
+            RenderSettings.fogColor = new Color(0.32f, 0.42f, 0.43f);
+            RenderSettings.fogDensity = 0.012f;
+            CreateSun();
+
+            var camera = new GameObject("Main Camera").AddComponent<Camera>();
+            camera.tag = "MainCamera";
+            camera.fieldOfView = 46f;
+            camera.transform.SetPositionAndRotation(new Vector3(0f, 5.6f, -16f), Quaternion.Euler(8f, 0f, 0f));
+            camera.backgroundColor = new Color(0.13f, 0.25f, 0.29f);
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.gameObject.AddComponent<AudioListener>();
+
+            CreateBlock("Campo do Menu", new Vector3(0f, -0.55f, 8f), new Vector3(32f, 1f, 24f), materials["Green"], "Ground");
+            CreateModel(FarmBuildings + "BigBarn.fbx", "Celeiro ao Fundo", null, new Vector3(5.2f, 0f, 10f), Quaternion.Euler(0f, -18f, 0f), 8.5f, true);
+            CreateModel(FarmBuildings + "Fence.fbx", "Cerca", null, new Vector3(-4f, 0f, 5.6f), Quaternion.Euler(0f, 90f, 0f), 1.25f, true);
+            CreateModel(Nature + "CommonTree_3.fbx", "Arvore", null, new Vector3(10.5f, 0f, 12f), Quaternion.Euler(0f, -20f, 0f), 7f, true);
+
+            var characterRoot = new GameObject("Menino do Menu");
+            var character = CreateModel(CharacterModel, "Modelo", characterRoot.transform, Vector3.zero, Quaternion.Euler(0f, 90f, 0f), 2.15f, false);
+            if (character != null)
+            {
+                // Unity's "fake null" defeats ??, so a missing Animator must be checked with ==.
+                var animator = character.GetComponent<Animator>();
+                if (animator == null) animator = character.AddComponent<Animator>();
+                animator.avatar = AssetDatabase.LoadAllAssetsAtPath(CharacterModel).OfType<Avatar>().FirstOrDefault(avatar => avatar.isValid && avatar.isHuman);
+                animator.runtimeAnimatorController = CreateMenuCharacterController();
+                animator.applyRootMotion = false;
+                camera.gameObject.AddComponent<MenuSceneAnimator>().Configure(characterRoot.transform, animator, camera.transform,
+                    new Vector3(-9f, 0f, 2.8f), new Vector3(9f, 0f, 2.8f));
+            }
+            else Object.DestroyImmediate(characterRoot);
+
+            CreateMenuBirdFlock();
+            return camera;
+        }
+
+        static AnimatorController CreateMenuCharacterController()
+        {
+            const string path = Root + "/Settings/MenuCharacter.controller";
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+            if (controller == null) controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            var machine = controller.layers[0].stateMachine;
+            var walk = machine.states.FirstOrDefault(item => item.state.name == "Walk").state ?? machine.AddState("Walk");
+            var jump = machine.states.FirstOrDefault(item => item.state.name == "Jump").state ?? machine.AddState("Jump");
+            walk.motion = FindAnimation("Armature|Walk_Loop");
+            jump.motion = FindAnimation("Armature|Jump_Loop");
+            machine.defaultState = walk;
+            return controller;
+        }
+
+        static void CreateMenuBirdFlock()
+        {
+            var flock = new GameObject("Passaros do Menu");
+            for (var i = 0; i < 5; i++)
+            {
+                var bird = new GameObject($"Passaro {i + 1}");
+                bird.transform.SetParent(flock.transform);
+                bird.AddComponent<BirdFlight>().Configure(new Vector3(0f, 8.5f + i * 0.35f, 11f + i), 5.5f + i,
+                    8f + i * 1.1f, i * 1.15f);
+                CreateModel(BirdModel, "Modelo", bird.transform, Vector3.zero, Quaternion.Euler(0f, 90f, 0f), 0.55f + i * 0.06f, false);
+            }
+        }
+
+        static Transform CreateMenuPanel(Transform parent)
+        {
+            var panel = new GameObject("Menu Panel", typeof(RectTransform), typeof(Image));
+            panel.transform.SetParent(parent, false);
+            var rect = (RectTransform)panel.transform;
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0.43f, 1f);
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            panel.GetComponent<Image>().color = new Color(0.07f, 0.075f, 0.07f, 0.82f);
+            return panel.transform;
+        }
+
+        static Button CreateMenuButton(Transform parent, string name, string label, Vector2 anchor, bool primary)
+        {
+            var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            buttonObject.transform.SetParent(parent, false);
+            var rect = (RectTransform)buttonObject.transform;
+            rect.anchorMin = rect.anchorMax = anchor;
+            rect.sizeDelta = new Vector2(560f, 76f);
+            var image = buttonObject.GetComponent<Image>();
+            image.color = primary ? new Color(0.48f, 0.14f, 0.09f, 0.98f) : new Color(0.16f, 0.16f, 0.14f, 0.88f);
+            var button = buttonObject.GetComponent<Button>();
+            var colors = button.colors;
+            colors.normalColor = image.color;
+            colors.highlightedColor = primary ? new Color(0.59f, 0.20f, 0.13f) : new Color(0.24f, 0.23f, 0.19f);
+            colors.pressedColor = new Color(0.34f, 0.09f, 0.06f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.fadeDuration = 0.18f;
+            button.colors = colors;
+            var text = CreateText(buttonObject.transform, "Label", label, 22, new Vector2(0.5f, 0.5f), rect.sizeDelta, TextAnchor.MiddleLeft, Color.white);
+            var labelRect = (RectTransform)text.transform;
+            labelRect.sizeDelta = new Vector2(492f, 76f);
+            labelRect.anchoredPosition = new Vector2(17f, 0f);
+            text.fontStyle = FontStyle.Bold;
+            return button;
         }
 
         static void CreateLevelSelectScene(Dictionary<string, Material> materials)
@@ -333,11 +499,16 @@ namespace DevGames.Editor
         static readonly Vector2 BarnCenter = new(12f, 34f);
         static readonly Vector2 SiloCenter = new(-10f, 64f);
         static readonly Vector2 MillCenter = new(10f, 92f);
-        static readonly Vector2 TowerCenter = new(0f, 116f);
+        static readonly Vector2 FinalCenter = new(0f, 116f);
         const float BarnHeight = 13f;
         const float SiloBase = 17f, SiloHeight = 16f;
         const float MillBase = 38f, MillHeight = 24f;
-        const float TowerBase = 66f, TowerHeight = 14f;
+
+        // Finale: the Fox Dev cottage isle, bigger than the others; the player lands at its door.
+        const float FinalBase = 66f;
+        const float FinalIslandScale = 24f;
+        const float FinalLanding = 9.5f;
+        const float IslandScale = 18f;
 
         static float StationTop(float baseY, float height) => baseY + height + DeckThickness;
 
@@ -362,8 +533,8 @@ namespace DevGames.Editor
             var route = new List<(string name, Vector3[] points)> { ("Escada do Celeiro", barn.ToArray()) };
             var exit = new Vector3(12f, barnTop, 40.5f);
             exit = AddFloatingStation(route, "Silo", exit, SiloCenter, SiloBase, SiloHeight, 5.2f, 45f, MillCenter);
-            exit = AddFloatingStation(route, "Moinho", exit, MillCenter, MillBase, MillHeight, 4.6f, -45f, TowerCenter);
-            AddFloatingStation(route, "Caixa d'Agua", exit, TowerCenter, TowerBase, TowerHeight, 5.4f, 45f, null);
+            exit = AddFloatingStation(route, "Moinho", exit, MillCenter, MillBase, MillHeight, 4.6f, -45f, FinalCenter);
+            AddBridge(route, "Casa", exit, FinalCenter, FinalBase, FinalLanding);
             return route;
         }
 
@@ -373,6 +544,19 @@ namespace DevGames.Editor
         static float AngleFrom(Vector2 center, Vector3 point) =>
             Mathf.Atan2(point.x - center.x, point.z - center.y) * Mathf.Rad2Deg;
 
+        /// <summary>Adds a rising line of floating props from a standing spot onto an island; returns the landing.</summary>
+        static Vector3 AddBridge(List<(string name, Vector3[] points)> route, string name, Vector3 start,
+            Vector2 center, float islandTop, float landingRadius)
+        {
+            var landing = OnCircle(center, landingRadius, AngleFrom(center, start), islandTop);
+            var jumps = Mathf.CeilToInt(Vector2.Distance(new Vector2(start.x, start.z), new Vector2(landing.x, landing.z)) / BridgeSpacing);
+            var bridge = new List<Vector3> { start };
+            for (var k = 1; k < jumps; k++) bridge.Add(Vector3.Lerp(start, landing, (float)k / jumps));
+            bridge.Add(landing);
+            route.Add(($"Ponte {name}", bridge.ToArray()));
+            return landing;
+        }
+
         /// <summary>
         /// Adds a floating bridge onto the building's island and a spiral from the island to its deck.
         /// Returns the deck spot facing the next building, where the following bridge starts.
@@ -380,14 +564,8 @@ namespace DevGames.Editor
         static Vector3 AddFloatingStation(List<(string name, Vector3[] points)> route, string name, Vector3 start,
             Vector2 center, float baseY, float height, float spiralRadius, float angleStep, Vector2? next)
         {
-            var arrival = AngleFrom(center, start);
-            var landing = OnCircle(center, IslandLanding, arrival, baseY);
-            var jumps = Mathf.CeilToInt(Vector2.Distance(new Vector2(start.x, start.z), new Vector2(landing.x, landing.z)) / BridgeSpacing);
-            var bridge = new List<Vector3> { start };
-            for (var k = 1; k < jumps; k++) bridge.Add(Vector3.Lerp(start, landing, (float)k / jumps));
-            bridge.Add(landing);
-            route.Add(($"Ponte {name}", bridge.ToArray()));
-
+            var landing = AddBridge(route, name, start, center, baseY, IslandLanding);
+            var arrival = AngleFrom(center, landing);
             var top = StationTop(baseY, height);
             var spiral = new List<Vector3> { landing };
             var turns = 0;
@@ -427,7 +605,7 @@ namespace DevGames.Editor
 
         static void CreateComposedCourse(Dictionary<string, Material> materials)
         {
-            new GameObject("FAZENDA_VERTICAL_V11");
+            new GameObject("FAZENDA_VERTICAL_V19");
             CreateFarmTerrain(materials);
             CreateGroundedFarmRoute();
 
@@ -449,13 +627,12 @@ namespace DevGames.Editor
             // route[1 + 2k] is the bridge onto island k; its last point is the island landing.
             CreateIsland("Silo", SiloCenter, SiloBase, Last(route[1].points), materials);
             CreateIsland("Moinho", MillCenter, MillBase, Last(route[3].points), materials);
-            CreateIsland("Caixa d'Agua", TowerCenter, TowerBase, Last(route[5].points), materials);
+            CreateIsland("Casa", FinalCenter, FinalBase, Last(route[5].points), materials, cottage: true);
 
             // Each deck carries a beacon over the spot where the next bridge starts.
             CreateStation("Celeiro", new Vector3(BarnCenter.x, StationTop(0f, BarnHeight), BarnCenter.y), new Vector3(5f, DeckThickness, 15f), route[1].points[0], materials);
             CreateStation("Silo", new Vector3(SiloCenter.x, StationTop(SiloBase, SiloHeight), SiloCenter.y), new Vector3(5f, DeckThickness, 5f), route[3].points[0], materials);
             CreateStation("Moinho", new Vector3(MillCenter.x, StationTop(MillBase, MillHeight), MillCenter.y), new Vector3(4.2f, DeckThickness, 4.2f), route[5].points[0], materials);
-            CreateStation("Caixa d'Agua", new Vector3(TowerCenter.x, StationTop(TowerBase, TowerHeight), TowerCenter.y), new Vector3(5f, DeckThickness, 5f), null, materials);
         }
 
         static Vector3 Last(Vector3[] points) => points[points.Length - 1];
@@ -479,46 +656,193 @@ namespace DevGames.Editor
         }
 
         /// <summary>
-        /// Grass disc with a hanging rock underside. It is solid, so a fall from the spiral lands
-        /// back on the island and the player retries from there instead of from the field.
+        /// Floating island. It uses the hand-painted Fox Dev isle when the pack is installed (base
+        /// only, or with its cottage for the finale) and falls back to simple shapes otherwise.
+        /// An invisible flat disc is the walkable surface, so a fall from the spiral lands back on
+        /// the island and the player retries from there instead of from the field.
         /// </summary>
-        static void CreateIsland(string name, Vector2 center, float top, Vector3 landing, Dictionary<string, Material> materials)
+        static void CreateIsland(string name, Vector2 center, float top, Vector3 landing,
+            Dictionary<string, Material> materials, bool cottage = false)
         {
             var root = new GameObject($"Ilha {name}").transform;
+            var radius = cottage ? FinalIslandScale * 0.445f : IslandRadius;
+            var arrival = AngleFrom(center, landing);
             var grass = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             grass.name = "Gramado";
             grass.layer = LayerMask.NameToLayer("Ground");
             grass.transform.SetParent(root, false);
             grass.transform.position = new Vector3(center.x, top - 0.25f, center.y);
-            grass.transform.localScale = new Vector3(IslandRadius * 2f, 0.25f, IslandRadius * 2f);
+            grass.transform.localScale = new Vector3(radius * 2f, 0.25f, radius * 2f);
             grass.GetComponent<Renderer>().sharedMaterial = materials["Green"];
             Object.DestroyImmediate(grass.GetComponent<Collider>());
             grass.AddComponent<MeshCollider>();
 
-            CreateVisual(PrimitiveType.Sphere, "Terra", root, Vector3.zero, new Vector3(IslandRadius * 1.95f, 5f, IslandRadius * 1.95f), materials["Soil"])
-                .transform.position = new Vector3(center.x, top - 3f, center.y);
-            CreateVisual(PrimitiveType.Sphere, "Rocha", root, Vector3.zero, new Vector3(IslandRadius * 1.1f, 6f, IslandRadius * 1.1f), materials["Soil"])
-                .transform.position = new Vector3(center.x, top - 6f, center.y);
+            if (PlaceFoxIsle(root, center, top, arrival, cottage ? FinalIslandScale : IslandScale, cottage))
+                SetVisible(grass, false);
+            else
+            {
+                CreateVisual(PrimitiveType.Sphere, "Terra", root, Vector3.zero, new Vector3(radius * 1.95f, 5f, radius * 1.95f), materials["Soil"])
+                    .transform.position = new Vector3(center.x, top - 3f, center.y);
+                CreateVisual(PrimitiveType.Sphere, "Rocha", root, Vector3.zero, new Vector3(radius * 1.1f, 6f, radius * 1.1f), materials["Soil"])
+                    .transform.position = new Vector3(center.x, top - 6f, center.y);
+                var rocks = new[] { "Rock1.fbx", "Rock2.fbx", "Rock3.fbx", "Rocks.fbx" };
+                for (var i = 0; i < 6; i++)
+                {
+                    // Models are placed by their base, so the base goes below the rock's own height.
+                    var height = 3f + i % 3;
+                    var hanging = OnCircle(center, 3.5f + i % 3 * 1.5f, i * 60f + top, top - 0.6f - i % 2 * 2f - height);
+                    CreateModel(IslandPack + rocks[i % rocks.Length], $"Rocha Pendurada {i + 1}", root, root.InverseTransformPoint(hanging),
+                        Quaternion.Euler(180f, i * 47f, 0f), height, true);
+                }
+            }
+
+            // Clouds drift below the island, under the bridges.
+            for (var i = 0; i < 3; i++)
+                CreateModel(IslandPack + "Cloud.fbx", $"Nuvem {i + 1}", root,
+                    root.InverseTransformPoint(OnCircle(center, radius + 6f + i * 2f, i * 120f + top * 3f, top - 9f - i * 1.5f)),
+                    Quaternion.Euler(0f, i * 70f, 0f), 2.5f + i * 0.5f, true);
+            if (cottage) return;
 
             // Decor sits on the rim, away from where the bridge arrives, outside the spiral's footprint.
-            var arrival = AngleFrom(center, landing);
             var decor = new[] { FarmProps + "Hay.fbx", Nature + "Bush_Common_Flowers.fbx", FarmProps + "Barrel.fbx",
                 Nature + "Flower_3_Group.fbx", FarmProps + "Bags.fbx", Nature + "Grass_Common_Tall.fbx", Nature + "Bush_Common.fbx" };
-            var heights = new[] { 1.1f, 1.2f, 1.1f, 0.6f, 0.8f, 0.7f, 1f };
+            var heights = new[] { 1.1f, 0.6f, 1.1f, 0.3f, 0.8f, 0.5f, 0.6f };
             for (var i = 0; i < decor.Length; i++)
             {
-                var point = OnCircle(center, 8.1f, arrival + 70f + i * 37f, top);
+                var point = OnCircle(center, radius * 0.85f, arrival + 70f + i * 37f, top);
                 CreateModel(decor[i], $"Enfeite {i + 1}", root, root.InverseTransformPoint(point),
                     Quaternion.Euler(0f, i * 53f, 0f), heights[i], true);
             }
         }
 
+        /// <summary>
+        /// Places the Fox Dev isle so its grass meets the route's island height. The grass is
+        /// slightly domed, so its height is sampled on the ring the player walks and averaged.
+        /// The cottage faces the arriving bridge, with its walls made solid.
+        /// </summary>
+        /// <returns>False when the pack is not installed (it is not redistributable).</returns>
+        static bool PlaceFoxIsle(Transform root, Vector2 center, float surfaceY, float yaw, float scale, bool cottage)
+        {
+            var isle = cottage ? InstantiateFoxParts(root) : InstantiateFoxParts(root, "RockyBase", "GeoSphere001");
+            if (isle == null) return false;
+            isle.name = cottage ? "Ilha da Casa (Fox Dev)" : "Ilha (Fox Dev)";
+            var rock = isle.transform.Find("RockyBase");
+            var grass = isle.transform.Find("GeoSphere001");
+            if (rock == null || grass == null)
+            {
+                Debug.LogWarning("Floating Isle sem RockyBase/GeoSphere001; usando ilha simples.");
+                Object.DestroyImmediate(isle);
+                return false;
+            }
+
+            isle.transform.SetPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, yaw, 0f));
+            isle.transform.localScale = Vector3.one * scale;
+            var rockCenter = rock.GetComponent<Renderer>().bounds.center;
+            isle.transform.position = new Vector3(center.x - rockCenter.x, 0f, center.y - rockCenter.z);
+
+            var probe = grass.gameObject.AddComponent<MeshCollider>();
+            Physics.SyncTransforms();
+            float sum = 0f, hits = 0f;
+            for (var angle = 0f; angle < 360f; angle += 30f)
+                if (probe.Raycast(new Ray(OnCircle(center, scale * 0.35f, angle, 500f), Vector3.down), out var hit, 1000f))
+                {
+                    sum += hit.point.y;
+                    hits++;
+                }
+            Object.DestroyImmediate(probe);
+            var grassY = hits > 0f ? sum / hits : grass.GetComponent<Renderer>().bounds.max.y;
+            isle.transform.position += Vector3.up * (surfaceY - grassY);
+
+            var house = isle.transform.Find("House");
+            if (cottage && house != null)
+            {
+                house.gameObject.layer = LayerMask.NameToLayer("CameraBlocker");
+                house.gameObject.AddComponent<BoxCollider>();
+            }
+            return true;
+        }
+
+        // The field is itself a big floating island; past its edge is the void.
+        static readonly Rect FieldIsland = new(-32f, -18f, 72f, 68f);
+
         static void CreateFarmTerrain(Dictionary<string, Material> materials)
         {
-            CreateBlock("Pasto", new Vector3(0f, -0.6f, 60f), new Vector3(150f, 1.2f, 200f), materials["Green"], "Ground");
+            var root = new GameObject("Ilha da Fazenda").transform;
+            var field = FieldIsland;
+            CreateBlock("Pasto", new Vector3(field.center.x, -0.6f, field.center.y), new Vector3(field.width, 1.2f, field.height), materials["Green"], "Ground")
+                .transform.SetParent(root, true);
             // Dirt surfaces are visual only, a hair above the grass, so they never trip the player.
-            CreateVisual(PrimitiveType.Cube, "Estrada de Terra", null, new Vector3(0f, 0.01f, 4f), new Vector3(6f, 0.02f, 34f), materials["Soil"]);
-            CreateVisual(PrimitiveType.Cube, "Terreiro do Celeiro", null, new Vector3(11f, 0.01f, 22.5f), new Vector3(24f, 0.02f, 8f), materials["Soil"]);
+            CreateVisual(PrimitiveType.Cube, "Estrada de Terra", root, new Vector3(0f, 0.01f, 4f), new Vector3(6f, 0.02f, 34f), materials["Soil"]);
+            CreateVisual(PrimitiveType.Cube, "Terreiro do Celeiro", root, new Vector3(11f, 0.01f, 22.5f), new Vector3(24f, 0.02f, 8f), materials["Soil"]);
+
+            // Fence on the rim plus a low invisible wall: walking never drops you off, a jump or a fall can.
+            var corners = new[]
+            {
+                new Vector3(field.xMin, 0f, field.yMin), new Vector3(field.xMax, 0f, field.yMin),
+                new Vector3(field.xMax, 0f, field.yMax), new Vector3(field.xMin, 0f, field.yMax)
+            };
+            for (var i = 0; i < 4; i++)
+            {
+                var from = corners[i] + (corners[(i + 2) % 4] - corners[i]).normalized * 1.2f;
+                var to = corners[(i + 1) % 4] + (corners[(i + 3) % 4] - corners[(i + 1) % 4]).normalized * 1.2f;
+                FenceLine(root, $"Cerca da Borda {i + 1}", from, (to - from).normalized, Vector3.Distance(from, to));
+                var wall = CreateBlock($"Limite {i + 1}", (from + to) * 0.5f + Vector3.up * 0.55f,
+                    new Vector3(Mathf.Abs(to.x - from.x) + 0.3f, 1.1f, Mathf.Abs(to.z - from.z) + 0.3f), null, "Ground");
+                SetVisible(wall, false);
+                wall.transform.SetParent(root, true);
+            }
+
+            // Cliff: a ring of rocks under the rim, then three big rocks forming the island's body.
+            var cliff = new GameObject("Penhasco").transform;
+            cliff.SetParent(root, false);
+            var step = 0;
+            for (var x = field.xMin + 6f; x <= field.xMax - 6f; x += 15f, step++)
+            {
+                CreateUnderRock(cliff, new Vector3(x, -0.3f, field.yMin + 6f), 16f, step * 67f);
+                CreateUnderRock(cliff, new Vector3(x, -0.3f, field.yMax - 6f), 16f, step * 41f);
+            }
+            for (var z = field.yMin + 21f; z <= field.yMax - 21f; z += 15f, step++)
+            {
+                CreateUnderRock(cliff, new Vector3(field.xMin + 6f, -0.3f, z), 16f, step * 53f);
+                CreateUnderRock(cliff, new Vector3(field.xMax - 6f, -0.3f, z), 16f, step * 29f);
+            }
+            for (var i = 0; i < 2; i++)
+                CreateUnderRock(cliff, new Vector3(field.center.x, -1.5f, field.center.y - 14f + i * 28f), 55f, i * 150f);
+        }
+
+        /// <summary>Hangs a rock under the island with its top at <paramref name="top"/>; visual only.</summary>
+        static void CreateUnderRock(Transform parent, Vector3 top, float size, float yaw)
+        {
+            var rock = InstantiateFoxParts(parent, "RockyBase");
+            if (rock == null)
+            {
+                // Without the Fox Dev pack: an upside-down Whitebird rock, base placed below its height.
+                CreateModel(IslandPack + "Rocks.fbx", "Rocha", parent, parent.InverseTransformPoint(top - Vector3.up * size * 0.8f),
+                    Quaternion.Euler(180f, yaw, 0f), size * 0.8f, true);
+                return;
+            }
+            rock.name = "Rocha (Fox Dev)";
+            rock.transform.SetPositionAndRotation(Vector3.zero, Quaternion.Euler(0f, yaw, 0f));
+            rock.transform.localScale = Vector3.one * size;
+            var bounds = rock.GetComponentInChildren<Renderer>().bounds;
+            rock.transform.position = top - new Vector3(bounds.center.x, bounds.max.y, bounds.center.z);
+        }
+
+        /// <summary>
+        /// Instantiates the Fox Dev isle keeping only the named parts. Returns null when the pack
+        /// is not installed (its license forbids redistribution, so it stays out of Git).
+        /// </summary>
+        static GameObject InstantiateFoxParts(Transform parent, params string[] keep)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(FoxIsle);
+            if (asset == null) return null;
+            var isle = Object.Instantiate(asset, parent);
+            if (keep.Length > 0)
+                foreach (Transform part in isle.transform.Cast<Transform>().ToArray())
+                    if (!keep.Contains(part.name)) Object.DestroyImmediate(part.gameObject);
+            foreach (var child in isle.GetComponentsInChildren<Transform>(true))
+                GameObjectUtility.SetStaticEditorFlags(child.gameObject, StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic);
+            return isle;
         }
 
         static Vector3 OnGround(float x, float z) => new(x, 0f, z);
@@ -562,10 +886,10 @@ namespace DevGames.Editor
         }
 
         /// <summary>Stretches a visual so it fills the gameplay box exactly: no invisible ledges.</summary>
-        static void FitToBox(GameObject visual, Vector3 center, Quaternion rotation, Vector3 size)
+        static Transform FitToBox(GameObject visual, Vector3 center, Quaternion rotation, Vector3 size)
         {
             var renderers = visual.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0) return;
+            if (renderers.Length == 0) return visual.transform;
             var bounds = renderers[0].bounds;
             for (var i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
 
@@ -576,6 +900,7 @@ namespace DevGames.Editor
             pivot.localScale = new Vector3(size.x / Mathf.Max(bounds.size.x, 0.01f),
                 size.y / Mathf.Max(bounds.size.y, 0.01f), size.z / Mathf.Max(bounds.size.z, 0.01f));
             pivot.SetPositionAndRotation(center, rotation);
+            return pivot;
         }
 
         /// <summary>
@@ -644,11 +969,6 @@ namespace DevGames.Editor
             CreateBarn(OnGround(BarnCenter.x, BarnCenter.y), materials);
             CreateSilo(new Vector3(SiloCenter.x, SiloBase, SiloCenter.y), materials);
             CreateWindmill(new Vector3(MillCenter.x, MillBase, MillCenter.y), materials);
-            CreateModel(FarmBuildings + "WaterTower.fbx", "Caixa d'Agua do Mirante", null,
-                new Vector3(TowerCenter.x, TowerBase, TowerCenter.y), Quaternion.Euler(0f, 20f, 0f), TowerHeight, true);
-            var towerBody = CreateBlock("Caixa d'Agua Collider", new Vector3(TowerCenter.x, TowerBase + TowerHeight * 0.5f, TowerCenter.y),
-                new Vector3(4f, TowerHeight, 4f), materials["Metal"], "CameraBlocker");
-            SetVisible(towerBody, false);
 
             CreateGroundFarm();
         }
@@ -707,19 +1027,24 @@ namespace DevGames.Editor
             new(-1f, 17f, 25f, 27f),     // barn, its stairs and yard
             new(19f, 28f, 9f, 18f),      // barn storage
             new(-29f, 19f, 20f, 30f),    // vegetable field
-            new(22f, 0f, 22f, 32f),      // animal pen
+            new(-10f, 27f, 4f, 12f),     // harvest by the field gate
+            new(22f, 0f, 16f, 22f),      // animal pen
             new(-26f, -14f, 15f, 15f),   // machine shed
             new(11f, -12f, 10f, 10f),    // tractor
             new(-25f, 10f, 10f, 10f),    // chicken coop
             new(14f, 8f, 7f, 7f),        // well
-            new(-25f, 50f, 12f, 10f),    // harvest storehouse
-            new(21f, 65f, 10f, 10f),     // small windmill
-            new(-31f, 93f, 10f, 10f)     // silo house
+            new(-14.5f, 1.5f, 5f, 5.5f), // picnic table
+            new(-30.5f, -0.5f, 7f, 7f),  // small windmill
+            new(7f, -15f, 8f, 8f),       // workshop
+            new(24f, -14f, 10f, 10f),    // parked truck
+            new(28f, 30f, 11f, 12f),     // pond
+            new(28f, 22.5f, 10f, 5.5f),  // big hay bales behind the pen
+            new(-10.5f, 1.5f, 3.5f, 3.5f) // campfire
         };
 
         /// <summary>
-        /// The field the player starts in, laid out in readable zones: entrance, vegetable field
-        /// on the left, animal pen on the right, storage beside the barn, pasture under the islands.
+        /// The starting island, laid out in readable zones: entrance, vegetable field on the left,
+        /// animal pen on the right and storage beside the barn.
         /// </summary>
         static void CreateGroundFarm()
         {
@@ -731,12 +1056,9 @@ namespace DevGames.Editor
             CreateModel(FarmBuildings + "Well.fbx", "Poco", entrance, OnGround(17.5f, 11.5f), Quaternion.identity, 2.8f, true);
             PropRow(entrance, "Feno do Galpao", "Hay.fbx", new Vector3(-23f, 0f, -1f), Vector3.right * 2.4f, 3, 1.1f);
             PropRow(entrance, "Barris do Galpao", "Barrel.fbx", new Vector3(-14f, 0f, -12f), Vector3.right * 1.3f, 3, 1.1f);
-            for (var i = 0; i < 6; i++)
-            {
-                // Fence lines flank the entrance road and open where it meets the barn yard.
-                CreateModel(FarmBuildings + "Fence.fbx", $"Cerca da Estrada E{i + 1}", entrance, OnGround(-4.5f, -12f + i * 3.1f), Quaternion.Euler(0f, 90f, 0f), 1.2f, true);
-                CreateModel(FarmBuildings + "Fence.fbx", $"Cerca da Estrada D{i + 1}", entrance, OnGround(4.5f, -12f + i * 3.1f), Quaternion.Euler(0f, 90f, 0f), 1.2f, true);
-            }
+            // Fence lines flank the entrance road and open where it meets the barn yard.
+            FenceLine(entrance, "Cerca da Estrada E", OnGround(-4.5f, -12f), Vector3.forward, 18f);
+            FenceLine(entrance, "Cerca da Estrada D", OnGround(4.5f, -12f), Vector3.forward, 18f);
             CreateWanderingAnimal("Cachorro", "Pug.fbx", OnGround(6f, 2f), 0.7f, 3f, 0.9f);
 
             CreateVegetableField(new GameObject("Zona - Horta").transform);
@@ -750,32 +1072,72 @@ namespace DevGames.Editor
             PropRow(storage, "Fardos", "Hay.fbx", new Vector3(24f, 0f, 38f), Vector3.forward * 2.4f, 3, 1.1f);
             CreateModel(FarmProps + "Cart.fbx", "Carroca do Celeiro", storage, OnGround(25.5f, 44f), Quaternion.Euler(0f, -60f, 0f), 1.6f, true);
 
-            var pasture = new GameObject("Zona - Pasto").transform;
-            CreateModel(FarmBuildings + "SmallBarn.fbx", "Armazem da Colheita", pasture, OnGround(-19f, 55f), Quaternion.Euler(0f, 90f, 0f), 6f, true);
-            CreateModel(FarmBuildings + "Windmill.fbx", "Moinho Pequeno", pasture, OnGround(26f, 70f), Quaternion.Euler(0f, -30f, 0f), 9f, true);
-            CreateModel(FarmBuildings + "Silo_House.fbx", "Casa do Silo", pasture, OnGround(-26f, 98f), Quaternion.Euler(0f, 60f, 0f), 8f, true);
-            for (var i = 0; i < 6; i++)
-                CreateModel(FarmProps + "Hay.fbx", $"Fardo no Pasto {i + 1}", pasture,
-                    OnGround(-6f + (i % 3) * 14f, 62f + (i / 3) * 34f), Quaternion.Euler(0f, i * 40f, 0f), 1.2f, true);
-            CreateWanderingAnimal("Ovelha do Pasto 1", "Sheep.fbx", OnGround(2f, 75f), 1.2f, 9f, 0.45f);
-            CreateWanderingAnimal("Ovelha do Pasto 2", "Sheep.fbx", OnGround(-4f, 84f), 1.1f, 9f, 0.5f);
-            CreateWanderingAnimal("Vaca do Pasto", "Cow.fbx", OnGround(18f, 104f), 1.7f, 10f, 0.55f);
-            CreateWanderingAnimal("Lhama", "Llama.fbx", OnGround(-14f, 120f), 1.8f, 8f, 0.6f);
-
+            CreateFarmDetails(new GameObject("Zona - Detalhes").transform);
+            CreateFarmProps(new GameObject("Zona - Objetos da Fazenda").transform);
             CreateNature(new GameObject("Zona - Natureza").transform);
         }
 
-        /// <summary>Fenced vegetable plot, one crop per row so it reads as a planted field.</summary>
+        // Ultimate Crops: "_4" models are the grown plants; "_Crop" models are the harvested produce.
+        // Each entry: plant model, height, planting columns across the bed (x offsets), row spacing.
+        static readonly (string model, float height, float[] columns, float spacing)[] CropBeds =
+        {
+            ("Corn_4.fbx", 1.9f, new[] { -0.55f, 0.55f }, 0.9f),
+            ("Wheat_4.fbx", 1f, new[] { -0.8f, -0.27f, 0.27f, 0.8f }, 0.4f),
+            ("Pumpkin_4.fbx", 0.55f, new[] { 0f }, 1.3f),
+            ("Carrot_4.fbx", 0.55f, new[] { -0.7f, 0f, 0.7f }, 0.6f),
+            ("Lettuce_4.fbx", 0.35f, new[] { -0.55f, 0.55f }, 0.8f),
+        };
+
+        /// <summary>
+        /// Fenced kitchen garden: a central path from the gate splits it into two halves of four
+        /// raised beds, tall crops at the back and low ones by the path; harvest waits by the gate.
+        /// </summary>
         static void CreateVegetableField(Transform root)
         {
-            CreateVisual(PrimitiveType.Cube, "Terra Arada", root, new Vector3(-19f, 0.01f, 34f), new Vector3(16f, 0.02f, 26f),
-                AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Soil.mat"));
-            var crops = new[] { "Wheat_Crop.fbx", "Corn_Crop.fbx", "Carrot_Crop.fbx", "Lettuce_Crop.fbx", "Pumpkin_Crop.fbx", "Wheat_Crop.fbx" };
-            var heights = new[] { 1.5f, 1.7f, 0.6f, 0.5f, 0.7f, 1.5f };
-            for (var row = 0; row < crops.Length; row++)
-                for (var i = 0; i < 11; i++)
-                    CreateModel(Crops + crops[row], $"Canteiro {row + 1}-{i + 1}", root,
-                        OnGround(-25.5f + row * 2.6f, 23f + i * 2.2f), Quaternion.Euler(0f, i * 23f, 0f), heights[row], true);
+            var soil = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Soil.mat");
+            var wood = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Wood.mat");
+            CreateVisual(PrimitiveType.Cube, "Caminho da Horta", root, new Vector3(-19.2f, 0.01f, 33f), new Vector3(16.4f, 0.02f, 1.8f), soil);
+
+            var random = new System.Random(11);
+            var bedX = new[] { -25f, -21.6f, -18.2f, -14.8f };
+            var halves = new[] { (center: 26.9f, length: 9.4f, crops: new[] { 0, 2, 1, 3 }), (center: 40.1f, length: 11.4f, crops: new[] { 0, 1, 3, 4 }) };
+            var bed = 0;
+            foreach (var half in halves)
+                for (var i = 0; i < bedX.Length; i++)
+                {
+                    var crop = CropBeds[half.crops[i]];
+                    var center = new Vector3(bedX[i], 0f, half.center);
+                    var name = $"Canteiro {++bed}";
+                    CreateVisual(PrimitiveType.Cube, $"{name} Terra", root, center + Vector3.up * 0.1f, new Vector3(2.4f, 0.2f, half.length), soil);
+                    for (var side = -1; side <= 1; side += 2)
+                    {
+                        CreateVisual(PrimitiveType.Cube, $"{name} Borda", root, center + new Vector3(side * 1.26f, 0.13f, 0f), new Vector3(0.12f, 0.26f, half.length + 0.12f), wood);
+                        CreateVisual(PrimitiveType.Cube, $"{name} Borda", root, center + new Vector3(0f, 0.13f, side * (half.length * 0.5f + 0.06f)), new Vector3(2.64f, 0.26f, 0.12f), wood);
+                    }
+
+                    var rows = Mathf.FloorToInt((half.length - 0.6f) / crop.spacing) + 1;
+                    var first = -(rows - 1) * crop.spacing * 0.5f;
+                    for (var row = 0; row < rows; row++)
+                        foreach (var column in crop.columns)
+                            CreateModel(Crops + crop.model, $"{name} Planta", root,
+                                center + new Vector3(column + Jitter(random, 0.06f), 0.2f, first + row * crop.spacing + Jitter(random, 0.06f)),
+                                Quaternion.Euler(0f, random.Next(360), 0f), crop.height * (0.9f + (float)random.NextDouble() * 0.2f), true);
+                }
+
+            // The path ends at a water barrel by the back fence.
+            CreateModel(FarmProps + "Barrel.fbx", "Barril de Agua", root, OnGround(-26.6f, 33f), Quaternion.identity, 1f, true);
+
+            // Harvest outside the gate, clear of the stepping stones at z 33.
+            CreateModel(FarmProps + "Crate.fbx", "Caixa de Cenouras", root, OnGround(-8.6f, 28.6f), Quaternion.Euler(0f, 12f, 0f), 0.9f, true);
+            for (var i = 0; i < 3; i++)
+            {
+                CreateModel(Crops + "Carrot_Crop.fbx", $"Cenoura Colhida {i + 1}", root, new Vector3(-8.9f + i * 0.3f, 0.9f, 28.6f),
+                    Quaternion.Euler(90f, i * 25f, 0f), 0.14f, true);
+                CreateModel(Crops + "Pumpkin_Crop.fbx", $"Abobora Colhida {i + 1}", root, OnGround(-7.4f + i % 2 * 0.6f, 29.8f + i * 0.55f),
+                    Quaternion.Euler(0f, i * 70f, 0f), 0.5f, true);
+                CreateModel(Crops + "Wheat_Crop.fbx", $"Feixe de Trigo {i + 1}", root, new Vector3(-7.6f, i * 0.12f, 35.6f),
+                    Quaternion.Euler(0f, 80f + i * 15f, 0f), 0.12f, true);
+            }
 
             // Gate on the side facing the road (x = -11, z 31-35).
             FenceLine(root, "Cerca da Horta Oeste", new Vector3(-27.5f, 0f, 21f), Vector3.forward, 26f);
@@ -789,26 +1151,108 @@ namespace DevGames.Editor
         /// <summary>Fenced pen with animals that stay inside it, plus hay and water barrels.</summary>
         static void CreateAnimalPen(Transform root)
         {
-            CreateVisual(PrimitiveType.Cube, "Chao do Curral", root, new Vector3(33f, 0.01f, 16f), new Vector3(20f, 0.02f, 30f),
+            CreateVisual(PrimitiveType.Cube, "Chao do Curral", root, new Vector3(30f, 0.01f, 11f), new Vector3(14f, 0.02f, 20f),
                 AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Soil.mat"));
             // Gate on the side facing the road (x = 23, z 12-16).
             FenceLine(root, "Cerca do Curral Oeste A", new Vector3(23f, 0f, 1f), Vector3.forward, 11f);
-            FenceLine(root, "Cerca do Curral Oeste B", new Vector3(23f, 0f, 16f), Vector3.forward, 15f);
-            FenceLine(root, "Cerca do Curral Leste", new Vector3(43f, 0f, 1f), Vector3.forward, 30f);
-            FenceLine(root, "Cerca do Curral Sul", new Vector3(23f, 0f, 1f), Vector3.right, 20f);
-            FenceLine(root, "Cerca do Curral Norte", new Vector3(23f, 0f, 31f), Vector3.right, 20f);
-            PropRow(root, "Feno do Curral", "Hay.fbx", new Vector3(41f, 0f, 4f), Vector3.forward * 2.4f, 4, 1.1f);
-            PropRow(root, "Bebedouro", "Barrel.fbx", new Vector3(26f, 0f, 28f), Vector3.right * 1.3f, 3, 1f);
+            FenceLine(root, "Cerca do Curral Oeste B", new Vector3(23f, 0f, 16f), Vector3.forward, 5f);
+            FenceLine(root, "Cerca do Curral Leste", new Vector3(37f, 0f, 1f), Vector3.forward, 20f);
+            FenceLine(root, "Cerca do Curral Sul", new Vector3(23f, 0f, 1f), Vector3.right, 14f);
+            FenceLine(root, "Cerca do Curral Norte", new Vector3(23f, 0f, 21f), Vector3.right, 14f);
+            PropRow(root, "Feno do Curral", "Hay.fbx", new Vector3(35.5f, 0f, 4f), Vector3.forward * 2.4f, 3, 1.1f);
+            PropRow(root, "Bebedouro", "Barrel.fbx", new Vector3(25.5f, 0f, 19.5f), Vector3.right * 1.3f, 3, 1f);
 
-            // Each animal's wander radius keeps it inside the 20 x 30 m pen.
-            CreateWanderingAnimal("Vaca 1", "Cow.fbx", OnGround(30f, 8f), 1.7f, 5f, 0.6f);
-            CreateWanderingAnimal("Vaca 2", "Cow.fbx", OnGround(36f, 22f), 1.6f, 5f, 0.55f);
-            CreateWanderingAnimal("Cavalo", "Horse.fbx", OnGround(34f, 15f), 2.1f, 6f, 0.8f);
-            CreateWanderingAnimal("Ovelha 1", "Sheep.fbx", OnGround(28f, 22f), 1.2f, 4f, 0.45f);
-            CreateWanderingAnimal("Ovelha 2", "Sheep.fbx", OnGround(30f, 26f), 1.1f, 3.5f, 0.5f);
-            CreateWanderingAnimal("Ovelha 3", "Sheep.fbx", OnGround(38f, 27f), 1.15f, 3f, 0.48f);
-            CreateWanderingAnimal("Porco 1", "Pig.fbx", OnGround(38f, 7f), 1f, 3.5f, 0.42f);
-            CreateWanderingAnimal("Porco 2", "Pig.fbx", OnGround(27f, 6f), 0.9f, 3f, 0.4f);
+            // Each animal's wander radius keeps it inside the 14 x 20 m pen.
+            CreateWanderingAnimal("Vaca 1", "Cow.fbx", OnGround(28f, 7f), 1.7f, 3.5f, 0.55f);
+            CreateWanderingAnimal("Vaca 2", "Cow.fbx", OnGround(32f, 15f), 1.6f, 3.5f, 0.5f);
+            CreateWanderingAnimal("Cavalo", "Horse.fbx", OnGround(30f, 11f), 2.1f, 4.5f, 0.7f);
+            CreateWanderingAnimal("Ovelha 1", "Sheep.fbx", OnGround(26.5f, 16f), 1.2f, 2.5f, 0.45f);
+            CreateWanderingAnimal("Ovelha 2", "Sheep.fbx", OnGround(34f, 18f), 1.1f, 2.5f, 0.5f);
+            CreateWanderingAnimal("Porco", "Pig.fbx", OnGround(34f, 5f), 1f, 2.5f, 0.42f);
+        }
+
+        /// <summary>Small touches that make the yard feel lived in: flower beds, a sign, a picnic spot.</summary>
+        static void CreateFarmDetails(Transform root)
+        {
+            var random = new System.Random(23);
+            var flowers = new[] { "Flower_4_Group.fbx", "Flower_3_Group.fbx", "Flower_4_Single.fbx", "Flower_3_Single.fbx" };
+
+            // Flower beds outside the road fences, from the spawn to the barn yard.
+            for (var z = -11f; z <= 5.5f; z += 0.9f)
+                for (var side = -1; side <= 1; side += 2)
+                    PlaceNature(root, "Canteiro de Flores da Estrada", flowers[random.Next(flowers.Length)],
+                        new Vector2(side * (5.6f + Jitter(random, 0.25f)), z + Jitter(random, 0.2f)), 0.22f, 0.35f, random);
+            // A ring of flowers around the well.
+            for (var i = 0; i < 10; i++)
+                PlaceNature(root, "Flores do Poco", flowers[i % flowers.Length],
+                    new Vector2(17.5f + Mathf.Sin(i * 36f * Mathf.Deg2Rad) * 2f, 11.5f + Mathf.Cos(i * 36f * Mathf.Deg2Rad) * 2f), 0.2f, 0.3f, random);
+
+            CreateModel(IslandPack + "Sighn.fbx", "Placa da Fazenda", root, OnGround(-6.2f, 7.5f), Quaternion.Euler(0f, 160f, 0f), 1.7f, true);
+            CreateModel(IslandPack + "Table.fbx", "Mesa de Piquenique", root, OnGround(-12f, 4f), Quaternion.Euler(0f, 90f, 0f), 0.8f, true);
+            CreateModel(IslandPack + "Chair.fbx", "Cadeira 1", root, OnGround(-12f, 2.6f), Quaternion.identity, 0.9f, true);
+            CreateModel(IslandPack + "Chair.fbx", "Cadeira 2", root, OnGround(-12f, 5.4f), Quaternion.Euler(0f, 180f, 0f), 0.9f, true);
+            CreateModel(IslandPack + "Weel.fbx", "Roda de Carroca", root, OnGround(20f, -9.5f), Quaternion.Euler(0f, 30f, 12f), 1.1f, true);
+            CreateModel(FarmBuildings + "Windmill.fbx", "Moinho Pequeno", root, OnGround(-27f, 3f), Quaternion.Euler(0f, 120f, 0f), 7f, true);
+        }
+
+        /// <summary>
+        /// Everyday farm objects from the styloo Cozy Farm and Kenney Survival Kit packs (both CC0),
+        /// grouped where they would be used: workshop, parked truck, pond, hay, garden, coop and well.
+        /// </summary>
+        static void CreateFarmProps(Transform root)
+        {
+            void Place(string path, string name, float x, float z, float yaw, float height, float y = 0f, float tilt = 0f) =>
+                CreateModel(path, name, root, new Vector3(x, y, z), Quaternion.Euler(0f, yaw, tilt), height, true);
+
+            // Workshop by the tractor: bench, anvil, grinder, tools leaning on it, logs and planks.
+            Place(SurvivalKit + "workbench.fbx", "Bancada", 10f, -12.5f, 180f, 0.95f);
+            Place(SurvivalKit + "workbench-anvil.fbx", "Bigorna", 12.2f, -12.2f, 160f, 0.8f);
+            Place(SurvivalKit + "workbench-grind.fbx", "Rebolo", 8f, -12.4f, 200f, 0.9f);
+            Place(SurvivalKit + "tool-shovel.fbx", "Pa", 9.1f, -13.5f, 180f, 1.15f, tilt: 12f);
+            Place(SurvivalKit + "tool-hoe.fbx", "Enxada", 9.6f, -13.6f, 180f, 1.15f, tilt: -10f);
+            Place(SurvivalKit + "tool-axe.fbx", "Machado", 11f, -13.5f, 180f, 0.9f, tilt: 14f);
+            Place(SurvivalKit + "tool-pickaxe.fbx", "Picareta", 11.5f, -13.6f, 180f, 0.95f, tilt: -12f);
+            for (var i = 0; i < 3; i++) Place(SurvivalKit + "tree-log.fbx", $"Tora {i + 1}", 8.2f + i * 0.6f, -9.6f, 90f, 0.55f);
+            for (var i = 0; i < 2; i++) Place(SurvivalKit + "tree-log.fbx", $"Tora de Cima {i + 1}", 8.5f + i * 0.6f, -9.6f, 90f, 0.55f, y: 0.5f);
+            Place(SurvivalKit + "resource-planks.fbx", "Tabuas", 12.5f, -9.8f, 30f, 0.3f);
+            Place(SurvivalKit + "resource-wood.fbx", "Lenha", 13.3f, -10.6f, 70f, 0.25f);
+            Place(SurvivalKit + "barrel.fbx", "Barril da Oficina", 13.8f, -13.2f, 0f, 1f);
+
+            // Truck parked in the south-east corner, with a fuel can.
+            Place(CozyFarm + "truck.fbx", "Caminhonete", 29f, -9f, -35f, 2.3f);
+            Place(CozyFarm + "gas.fbx", "Galao", 26.4f, -11.2f, 20f, 0.5f);
+            Place(CozyFarm + "woodenbox.fbx", "Caixote da Caminhonete", 31.6f, -12.4f, 15f, 0.6f);
+
+            // Pond in the quiet north-east corner, with a bench and a fishing rod.
+            Place(CozyFarm + "pondscene.fbx", "Laguinho", 33.5f, 36.5f, 20f, 2.2f);
+            Place(CozyFarm + "benchlittle.fbx", "Banco do Lago", 30f, 32f, 210f, 0.9f);
+            Place(CozyFarm + "fishingrod.fbx", "Vara de Pesca", 31f, 33.5f, 200f, 2f, tilt: 8f);
+
+            // Big round bales behind the pen.
+            Place(CozyFarm + "haystackround.fbx", "Fardo Redondo 1", 31f, 25f, 10f, 1.8f);
+            Place(CozyFarm + "haystackround.fbx", "Fardo Redondo 2", 35.5f, 25.3f, -15f, 1.8f);
+            Place(CozyFarm + "haystackthick.fbx", "Monte de Feno", 29.2f, 27.6f, 40f, 1.6f);
+
+            // Garden: watering cans on the path, a basket of produce at the harvest crate.
+            Place(CozyFarm + "wateringcanwflower.fbx", "Regador", -12.6f, 33.7f, 120f, 0.45f);
+            Place(CozyFarm + "wateringcan_001.fbx", "Regador 2", -25.4f, 32.4f, -40f, 0.45f);
+            for (var i = 0; i < 3; i++)
+            {
+                Place(CozyFarm + "tomato.fbx", $"Tomate {i + 1}", -7.2f + i * 0.35f, 31.6f, i * 50f, 0.3f);
+                Place(CozyFarm + "apple.fbx", $"Maca {i + 1}", -8.4f + i * 0.3f, 31.2f, i * 70f, 0.25f);
+            }
+            Place(CozyFarm + "woodenbox.fbx", "Caixote da Horta", -9.4f, 30.9f, 8f, 0.6f);
+
+            // Coop eggs, buckets at the well and pen trough, mailbox at the entrance, campfire by the picnic.
+            for (var i = 0; i < 3; i++) Place(CozyFarm + "egg.fbx", $"Ovo {i + 1}", -16.3f + i * 0.18f, 13.2f, i * 40f, 0.08f);
+            Place(CozyFarm + "bucketwooden.fbx", "Balde do Poco", 19.4f, 10.2f, 0f, 0.35f);
+            Place(CozyFarm + "bucketwooden.fbx", "Balde do Curral", 29.5f, 19.4f, 30f, 0.35f);
+            Place(CozyFarm + "mailbox.fbx", "Caixa de Correio", 6f, -14f, 180f, 1.2f);
+            Place(SurvivalKit + "campfire-pit.fbx", "Fogueira", -8.7f, 3.2f, 0f, 0.35f);
+            Place(SurvivalKit + "tree-trunk.fbx", "Toco de Sentar", -9.8f, 1.9f, 30f, 0.45f);
+            Place(CozyFarm + "flowerstack.fbx", "Vasos de Flores", -9.6f, 6.6f, 90f, 0.9f);
+            Place(CozyFarm + "woodenmixer.fbx", "Batedeira de Manteiga", 21.2f, 45.4f, 90f, 1.2f);
+            Place(CozyFarm + "woodenbox_001.fbx", "Pilha de Caixotes", -14f, -13.6f, 0f, 1.5f);
         }
 
         /// <summary>Trees frame the field; grass, flowers, bushes and stones fill the free ground.</summary>
@@ -816,20 +1260,23 @@ namespace DevGames.Editor
         {
             var random = new System.Random(7);
             var trees = new[] { "CommonTree_1.fbx", "CommonTree_2.fbx", "CommonTree_3.fbx", "CommonTree_4.fbx", "CommonTree_5.fbx", "Pine_1.fbx", "Pine_2.fbx", "Pine_3.fbx" };
+            // Trees line the island rim (inside the fence), skipping the busy zones.
             var t = 0;
-            for (var z = -24f; z <= 150f; z += 9f)
+            var rim = new Rect(FieldIsland.xMin + 3.5f, FieldIsland.yMin + 3.5f, FieldIsland.width - 7f, FieldIsland.height - 7f);
+            for (var s = 0f; s < 2f * (rim.width + rim.height); s += 6.5f)
             {
-                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], new Vector2(-50f - Jitter(random, 4f), z + Jitter(random, 3f)), 7f, 10f, random);
-                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], new Vector2(50f + Jitter(random, 4f), z + Jitter(random, 3f)), 7f, 10f, random);
+                var point = PointOnRectEdge(rim, s) + new Vector2(Jitter(random, 1.2f), Jitter(random, 1.2f));
+                if (BusyGround.Any(zone => zone.Contains(point))) continue;
+                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], point, 6f, 9f, random);
             }
-            for (var x = -44f; x <= 44f; x += 8f)
-                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], new Vector2(x + Jitter(random, 2f), -26f - Jitter(random, 3f)), 7f, 10f, random);
 
-            Scatter(root, "Arvore do Pasto", new[] { "CommonTree_2.fbx", "CommonTree_4.fbx", "TwistedTree_1.fbx", "TwistedTree_3.fbx" }, 14, new Rect(-44f, 46f, 88f, 100f), 6f, 9f, random);
-            Scatter(root, "Arbusto", new[] { "Bush_Common.fbx", "Bush_Common_Flowers.fbx", "Plant_1_Big.fbx", "Plant_7_Big.fbx" }, 60, new Rect(-46f, -24f, 92f, 170f), 0.8f, 1.6f, random);
-            Scatter(root, "Flores", new[] { "Flower_3_Group.fbx", "Flower_4_Group.fbx", "Flower_3_Single.fbx", "Flower_4_Single.fbx", "Clover_1.fbx" }, 120, new Rect(-46f, -24f, 92f, 170f), 0.3f, 0.6f, random);
-            Scatter(root, "Capim", new[] { "Grass_Common_Tall.fbx", "Grass_Common_Short.fbx", "Grass_Wispy_Tall.fbx", "Grass_Wispy_Short.fbx", "Fern_1.fbx" }, 220, new Rect(-46f, -24f, 92f, 170f), 0.4f, 0.9f, random);
-            Scatter(root, "Pedra", new[] { "Rock_Medium_1.fbx", "Rock_Medium_2.fbx", "Rock_Medium_3.fbx", "Pebble_Round_2.fbx", "Mushroom_Common.fbx" }, 30, new Rect(-46f, -24f, 92f, 170f), 0.3f, 1f, random);
+            var inner = new Rect(FieldIsland.xMin + 4f, FieldIsland.yMin + 4f, FieldIsland.width - 8f, FieldIsland.height - 8f);
+            Scatter(root, "Arbusto", new[] { "Bush_Common.fbx", "Bush_Common_Flowers.fbx", "Plant_1.fbx", "Plant_7.fbx" }, 22, inner, 0.35f, 0.7f, random);
+            Scatter(root, "Flores", new[] { "Flower_3_Group.fbx", "Flower_4_Group.fbx", "Flower_3_Single.fbx", "Flower_4_Single.fbx", "Clover_1.fbx", "Clover_2.fbx" }, 130, inner, 0.15f, 0.35f, random);
+            Scatter(root, "Petalas", new[] { "Petal_1.fbx", "Petal_2.fbx", "Petal_3.fbx", "Petal_4.fbx", "Petal_5.fbx" }, 40, inner, 0.04f, 0.08f, random);
+            Scatter(root, "Cogumelo", new[] { "Mushroom_Common.fbx", "Mushroom_Laetiporus.fbx" }, 14, inner, 0.2f, 0.35f, random);
+            Scatter(root, "Capim", new[] { "Grass_Common_Tall.fbx", "Grass_Common_Short.fbx", "Grass_Wispy_Tall.fbx", "Grass_Wispy_Short.fbx", "Fern_1.fbx" }, 80, inner, 0.4f, 0.9f, random);
+            Scatter(root, "Pedra", new[] { "Rock_Medium_1.fbx", "Rock_Medium_2.fbx", "Rock_Medium_3.fbx", "Pebble_Round_2.fbx", "Mushroom_Common.fbx" }, 12, inner, 0.3f, 1f, random);
 
             // Stepping stones from the road to the field gate and to the pen gate.
             for (var i = 0; i < 4; i++)
@@ -837,6 +1284,17 @@ namespace DevGames.Editor
                 PlaceNature(root, $"Caminho da Horta {i + 1}", "RockPath_Round_Small_1.fbx", new Vector2(-5.5f - i * 1.4f, 33f), 0.1f, 0.1f, random);
                 PlaceNature(root, $"Caminho do Curral {i + 1}", "RockPath_Round_Small_2.fbx", new Vector2(5.5f + i * 4.3f, 14f), 0.1f, 0.1f, random);
             }
+        }
+
+        /// <summary>Walks a rectangle's perimeter: distance along the edge to a point on it.</summary>
+        static Vector2 PointOnRectEdge(Rect rect, float distance)
+        {
+            if (distance < rect.width) return new Vector2(rect.xMin + distance, rect.yMin);
+            distance -= rect.width;
+            if (distance < rect.height) return new Vector2(rect.xMax, rect.yMin + distance);
+            distance -= rect.height;
+            if (distance < rect.width) return new Vector2(rect.xMax - distance, rect.yMax);
+            return new Vector2(rect.xMin, rect.yMax - (distance - rect.width));
         }
 
         static float Jitter(System.Random random, float amount) => ((float)random.NextDouble() - 0.5f) * 2f * amount;
@@ -863,13 +1321,23 @@ namespace DevGames.Editor
                 CreateModel(FarmProps + file, $"{name} {i + 1}", root, start + step * i, Quaternion.Euler(0f, i * 17f, 0f), height, true);
         }
 
+        /// <summary>
+        /// Fence from start along direction. The Quaternius fence is ~6 m long, so the line is split
+        /// into whole segments, each stretched a little to end exactly at the corner.
+        /// </summary>
         static void FenceLine(Transform root, string name, Vector3 start, Vector3 direction, float length)
         {
-            const float segment = 3.1f;
-            var rotation = Quaternion.LookRotation(Vector3.Cross(Vector3.up, direction));
-            for (var i = 0; i * segment < length; i++)
-                CreateModel(FarmBuildings + (i % 2 == 0 ? "Fence.fbx" : "Fence2.fbx"), $"{name} {i + 1}", root,
-                    start + direction * (i * segment + segment * 0.5f), rotation, 1.3f, true);
+            var count = Mathf.Max(1, Mathf.RoundToInt(length / 6f));
+            var segment = length / count;
+            var rotation = Quaternion.FromToRotation(Vector3.right, direction);
+            for (var i = 0; i < count; i++)
+            {
+                var center = start + direction * (segment * (i + 0.5f));
+                var fence = CreateModel(FarmBuildings + (i % 2 == 0 ? "Fence.fbx" : "Fence2.fbx"), $"{name} {i + 1}", null,
+                    center, Quaternion.identity, 1.2f, true);
+                if (fence != null)
+                    FitToBox(fence, center + Vector3.up * 0.6f, rotation, new Vector3(segment, 1.2f, 0.2f)).SetParent(root, true);
+            }
         }
 
         /// <summary>Creates one animal and gives it a bounded autonomous walking area.</summary>
@@ -881,8 +1349,84 @@ namespace DevGames.Editor
         /// <param name="speed">Walking speed in metres per second.</param>
         static void CreateWanderingAnimal(string name, string file, Vector3 position, float height, float radius, float speed)
         {
-            var animal = CreateModel(Animals + file, name, null, position, Quaternion.identity, height, false);
-            if (animal != null) animal.AddComponent<AnimalWander>().Configure(position, radius, speed);
+            // The clips key the model root's own position, rotation and scale, so placement and
+            // size live on a holder and the animation only ever moves the model inside it.
+            var holder = new GameObject(name);
+            holder.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, position.x * 37f + position.z * 11f, 0f));
+            var animal = CreateModel(Animals + file, "Modelo", holder.transform, Vector3.zero, Quaternion.identity, height, false);
+            if (animal == null)
+            {
+                Object.DestroyImmediate(holder);
+                return;
+            }
+            var imported = AssetDatabase.LoadAssetAtPath<GameObject>(Animals + file).transform;
+            holder.transform.localScale = Vector3.one * (animal.transform.localScale.x / Mathf.Abs(imported.localScale.x));
+            animal.transform.localPosition = imported.localPosition;
+            animal.transform.localRotation = imported.localRotation;
+            animal.transform.localScale = imported.localScale;
+
+            var animator = animal.GetComponent<Animator>();
+            if (animator == null) animator = animal.AddComponent<Animator>();
+            animator.runtimeAnimatorController = AnimalController(file, out var canWalk);
+            animator.applyRootMotion = false;
+            // Quaternius sheep, pig, llama and pug have no walk cycle: they graze in place
+            // instead of sliding around in their idle pose.
+            holder.AddComponent<AnimalWander>().Configure(position, canWalk ? radius : 0f, speed);
+        }
+
+        /// <summary>
+        /// Idle/Walk controller for a Quaternius animal, switched by the "Moving" bool that
+        /// AnimalWander sets. The FBX clips are imported once as loops.
+        /// </summary>
+        static RuntimeAnimatorController AnimalController(string file, out bool canWalk)
+        {
+            var modelPath = Animals + file;
+            if (AssetImporter.GetAtPath(modelPath) is ModelImporter importer)
+            {
+                var clips = importer.clipAnimations.Length > 0 ? importer.clipAnimations : importer.defaultClipAnimations;
+                if (clips.Any(clip => !clip.loopTime && (clip.name.EndsWith("Idle") || clip.name.Contains("Walk"))))
+                {
+                    foreach (var clip in clips)
+                        if (clip.name.EndsWith("Idle") || clip.name.Contains("Walk"))
+                            clip.loopTime = true;
+                    importer.clipAnimations = clips;
+                    importer.SaveAndReimport();
+                }
+            }
+
+            var animations = AssetDatabase.LoadAllAssetsAtPath(modelPath).OfType<AnimationClip>()
+                .Where(clip => !clip.name.StartsWith("__preview__")).ToArray();
+            var idle = animations.FirstOrDefault(clip => clip.name.EndsWith("Idle"));
+            var walk = animations.FirstOrDefault(clip => clip.name.EndsWith("WalkSlow")) ??
+                       animations.FirstOrDefault(clip => clip.name.EndsWith("Walk"));
+            canWalk = walk != null;
+
+            // One controller per model, shared by every animal of that kind.
+            const string folder = Root + "/Settings/Animals";
+            if (!AssetDatabase.IsValidFolder(folder)) AssetDatabase.CreateFolder(Root + "/Settings", "Animals");
+            var path = $"{folder}/{System.IO.Path.GetFileNameWithoutExtension(file)}.controller";
+            var existing = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+            if (existing != null) return existing;
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            controller.AddParameter("Moving", AnimatorControllerParameterType.Bool);
+            var machine = controller.layers[0].stateMachine;
+            var idleState = machine.AddState("Idle");
+            idleState.motion = idle;
+            machine.defaultState = idleState;
+            if (canWalk)
+            {
+                var walkState = machine.AddState("Walk");
+                walkState.motion = walk;
+                var toWalk = idleState.AddTransition(walkState);
+                toWalk.AddCondition(AnimatorConditionMode.If, 0f, "Moving");
+                toWalk.hasExitTime = false;
+                toWalk.duration = 0.2f;
+                var toIdle = walkState.AddTransition(idleState);
+                toIdle.AddCondition(AnimatorConditionMode.IfNot, 0f, "Moving");
+                toIdle.hasExitTime = false;
+                toIdle.duration = 0.25f;
+            }
+            return controller;
         }
 
         static void CreateBirdFlock()
@@ -947,7 +1491,11 @@ namespace DevGames.Editor
         static void CreateGoal(Dictionary<string, Material> materials)
         {
             var goal = new GameObject("Primeiro Dedo");
-            goal.transform.position = new Vector3(TowerCenter.x, StationTop(TowerBase, TowerHeight) + 1.1f, TowerCenter.y);
+            // The finger waits at the cottage door, just past where the last bridge lands.
+            var route = CourseRoute();
+            var landing = Last(route[route.Count - 1].points);
+            var toHouse = (new Vector3(FinalCenter.x, landing.y, FinalCenter.y) - landing).normalized;
+            goal.transform.position = landing + toHouse * 1.2f + Vector3.up * 1.1f;
             goal.layer = LayerMask.NameToLayer("Collectible");
             var collider = goal.AddComponent<CapsuleCollider>();
             collider.isTrigger = true;

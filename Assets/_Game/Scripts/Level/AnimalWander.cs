@@ -6,11 +6,14 @@ namespace DevGames.Level
     public sealed class AnimalWander : MonoBehaviour
     {
         [SerializeField] Vector3 areaCenter;
-        [SerializeField, Min(1f)] float radius = 5f;
+        // Zero keeps the animal in place (models without a walk cycle); otherwise at least 1 m.
+        [SerializeField, Min(0f)] float radius = 5f;
         [SerializeField, Min(0.1f)] float speed = 0.6f;
         [SerializeField, Min(1f)] float turnSpeed = 4f;
+        static readonly int MovingParameter = Animator.StringToHash("Moving");
         Vector3 target;
         float pauseUntil;
+        Animator animator;
 
         /// <summary>Defines the centre, size and speed of this animal's grazing route.</summary>
         /// <param name="center">World-space centre that the animal must remain near.</param>
@@ -19,21 +22,26 @@ namespace DevGames.Level
         public void Configure(Vector3 center, float walkRadius, float walkSpeed)
         {
             areaCenter = center;
-            radius = Mathf.Max(1f, walkRadius);
+            radius = walkRadius <= 0f ? 0f : Mathf.Max(1f, walkRadius);
             speed = Mathf.Max(0.1f, walkSpeed);
             PickTarget();
         }
 
-        /// <summary>Chooses an initial destination when the scene begins.</summary>
+        /// <summary>Chooses an initial destination and desynchronises the herd's animation cycles.</summary>
         void Start()
         {
+            animator = GetComponentInChildren<Animator>();
+            if (animator != null && animator.runtimeAnimatorController != null)
+                animator.Play(0, 0, Random.value);
             if (target == Vector3.zero) PickTarget();
         }
 
         /// <summary>Turns and moves the animal, pausing briefly after reaching each destination.</summary>
         void Update()
         {
-            if (Time.time < pauseUntil) return;
+            var moving = radius > 0f && Time.time >= pauseUntil;
+            if (animator != null) animator.SetBool(MovingParameter, moving);
+            if (!moving) return;
             var offset = target - transform.position;
             offset.y = 0f;
             if (offset.sqrMagnitude < 0.2f)

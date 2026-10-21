@@ -1,5 +1,6 @@
 using DevGames.Core;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DevGames.Player
 {
@@ -7,7 +8,7 @@ namespace DevGames.Player
     public sealed class PlayerRespawn : MonoBehaviour
     {
         [SerializeField] InputReader input;
-        [SerializeField] float voidHeight = -15f;
+        [SerializeField] float voidHeight = -30f;
         Vector3 spawnPosition;
         Quaternion spawnRotation;
         CharacterController controller;
@@ -25,7 +26,10 @@ namespace DevGames.Player
 
         void Update()
         {
-            if (input?.ResetPressed == true || transform.position.y < voidHeight) Respawn();
+            // Falling off the island into the void restarts the level (timer included);
+            // R only returns to the start and keeps the timer running.
+            if (transform.position.y < voidHeight) SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            else if (input?.ResetPressed == true) Respawn();
         }
 
         /// <summary>

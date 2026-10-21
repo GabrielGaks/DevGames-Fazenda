@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using UnityEditor;
+using UnityEngine;
 
 namespace DevGames.Editor
 {
@@ -19,6 +20,15 @@ namespace DevGames.Editor
         {
             if (!assetPath.StartsWith(ThirdPartyRoot) || !assetPath.EndsWith(".fbx")) return;
             ((ModelImporter)assetImporter).bakeAxisConversion = false;
+        }
+
+        /// <summary>
+        /// The styloo Cozy Farm palette washes out under glossy PBR; its author recommends a
+        /// rough, matte look, so its imported materials get almost no smoothness.
+        /// </summary>
+        void OnPostprocessMaterial(Material material)
+        {
+            if (assetPath.StartsWith(ThirdPartyRoot + "Styloo/")) material.SetFloat("_Smoothness", 0.1f);
         }
     }
 }
