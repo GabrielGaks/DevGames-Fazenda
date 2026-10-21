@@ -2,7 +2,8 @@
   "name": "DevGames.EditModeTests",
   "rootNamespace": "DevGames.Tests",
   "references": [
-    "DevGames.Runtime"
+    "DevGames.Runtime",
+    "DevGames.Editor"
   ],
   "includePlatforms": [
     "Editor"

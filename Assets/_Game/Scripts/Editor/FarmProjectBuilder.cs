@@ -62,18 +62,30 @@ namespace DevGames.Editor
             Debug.Log("DevGames Fazenda construída com sucesso.");
         }
 
-        /// <summary>Applies the stable visual revision and emits an unmistakable confirmation.</summary>
-        [MenuItem("DevGames/APLICAR CENARIO SEM TRILHO V7")]
+        /// <summary>Applies the organic farm revision and emits an unmistakable confirmation.</summary>
+        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V11")]
         public static void ApplyVisualFixV6()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                Debug.LogError("Pare o Play Mode antes de aplicar o CENARIO SEM TRILHO V7.");
+                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V11.");
                 return;
             }
 
             BuildAll();
-            Debug.Log("CENARIO SEM TRILHO V7 SALVO EM Farm.unity - abra Bootstrap e pressione Play.");
+            Debug.Log("FAZENDA VERTICAL V11 salva em Farm.unity - abra Bootstrap e pressione Play.");
+        }
+
+        [InitializeOnLoadMethod]
+        static void ApplyOrganicFarmOnce()
+        {
+            if (Application.isBatchMode) return;
+            var farmScene = $"{SceneRoot}/Levels/Farm.unity";
+            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V11")) return;
+            EditorApplication.delayCall += () =>
+            {
+                if (!EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isCompiling) ApplyVisualFixV6();
+            };
         }
 
         /// <summary>Disables the scene generator while Play Mode or compilation is active.</summary>
@@ -103,6 +115,7 @@ namespace DevGames.Editor
             CreateMaterial("Green", Green, result);
             CreateMaterial("Roof", Roof, result);
             CreateMaterial("Cream", Cream, result);
+            CreateMaterial("Soil", new Color(0.34f, 0.22f, 0.12f), result);
             CreateMaterial("Metal", new Color(0.30f, 0.36f, 0.38f), result);
             CreateMaterial("Goal", new Color(1f, 0.55f, 0.12f), result, true);
             return result;
@@ -301,120 +314,227 @@ namespace DevGames.Editor
             return camera;
         }
 
-        static void CreateCourse(Dictionary<string, Material> materials)
-        {
-            // A single broad foundation keeps the entrance, crops, animals and buildings
-            // visually grounded instead of leaving decorations outside the playable floor.
-            CreateBlock("Terreno da Fazenda", new Vector3(0f, -0.55f, 92f), new Vector3(100f, 1f, 230f), materials["Green"], "Ground");
-            var position = new Vector3(0f, 0.35f, 4f);
-            for (var index = 0; index < 56; index++)
-            {
-                var sector = index / 8;
-                var within = index % 8;
-                var width = Mathf.Lerp(4.2f, 2.1f, sector / 6f);
-                position += new Vector3((within % 2 == 0 ? 1f : -1f) * (2.4f + sector * 0.08f), 0.72f + sector * 0.04f, 3.45f + sector * 0.1f);
-                var platform = CreateBlock($"S{sector + 1}_Platform_{within + 1}", position, new Vector3(width + 0.7f, 0.45f, width), within % 3 == 0 ? materials["Straw"] : materials["Wood"], "Climbable");
-                if (index == 50)
-                {
-                    platform.name = "Moinho Plataforma Móvel";
-                    platform.layer = LayerMask.NameToLayer("MovingPlatform");
-                    platform.AddComponent<MovingPlatform>();
-                }
+        /// <summary>Builds a hillside farm whose parkour is attached to working areas.</summary>
+        // Course tuning. Reach comes from PlayerMotor (jumpHeight 1.6, gravity -24, sprint 7).
+        const float StepRise = 1.2f;
+        const float MaxRise = 1.4f;
+        const float MaxReach = 5f;
+        const float BridgeSpacing = 4.3f;
+        const float MinPropSpacing = 3.2f;
+        const float MinHeadroom = 3f;
+        const float DeckThickness = 0.4f;
+        const float DeckLanding = 1.8f;
+        const float IslandRadius = 9f;
+        const float IslandLanding = 7.5f;
+        static readonly Vector3 RoutePropSize = new(3f, 1.1f, 2.6f);
+        static readonly string[] RouteProps = { "Hay.fbx", "Crate.fbx", "Bags.fbx", "Hay.fbx", "Barrel.fbx" };
 
-                if (within == 0)
-                {
-                    var recovery = CreateBlock($"S{sector + 1}_Recovery", position + new Vector3(0f, -2.4f, -4f), new Vector3(13f, 0.7f, 11f), materials["Straw"], "Ground");
-                    recovery.transform.rotation = Quaternion.Euler(0f, sector * 13f, 0f);
-                    CreateSplitTrigger(position + Vector3.up * 1.2f, $"Setor {sector + 1}");
-                }
-            }
-        }
+        // The barn stands on the field; the other landmarks float on islands above it.
+        static readonly Vector2 BarnCenter = new(12f, 34f);
+        static readonly Vector2 SiloCenter = new(-10f, 64f);
+        static readonly Vector2 MillCenter = new(10f, 92f);
+        static readonly Vector2 TowerCenter = new(0f, 116f);
+        const float BarnHeight = 13f;
+        const float SiloBase = 17f, SiloHeight = 16f;
+        const float MillBase = 38f, MillHeight = 24f;
+        const float TowerBase = 66f, TowerHeight = 14f;
+
+        static float StationTop(float baseY, float height) => baseY + height + DeckThickness;
 
         /// <summary>
-        /// Builds a route through the farm itself. Every visible landing is a real rural
-        /// prop; simple cubes are retained only as invisible, predictable gameplay colliders.
+        /// The playable route as ordered segments. The first and last point of each segment are
+        /// standing spots (ground, island or deck); every point between them is a floating prop.
+        /// Order: barn stairs, then a bridge and a spiral for each floating station.
         /// </summary>
-        /// <param name="materials">Shared visual materials used by the course.</param>
+        public static IReadOnlyList<(string name, Vector3[] points)> CourseRoute()
+        {
+            var barnTop = StationTop(0f, BarnHeight);
+
+            // Switchback of hay in front of the barn wall (z 26.5), ending on the ridge catwalk.
+            var barn = new List<Vector3> { OnGround(5f, 20.8f) };
+            var y = 1.3f;
+            foreach (var x in new[] { 5f, 9f, 13f, 17f }) { barn.Add(new Vector3(x, y, 23.8f)); y += StepRise; }
+            barn.Add(new Vector3(20.5f, y, 22f)); y += StepRise;
+            foreach (var x in new[] { 17f, 13f, 9f, 5f }) { barn.Add(new Vector3(x, y, 20.2f)); y += StepRise; }
+            barn.Add(new Vector3(7.5f, y, 23.6f));
+            barn.Add(new Vector3(10.5f, barnTop, 27.3f));
+
+            var route = new List<(string name, Vector3[] points)> { ("Escada do Celeiro", barn.ToArray()) };
+            var exit = new Vector3(12f, barnTop, 40.5f);
+            exit = AddFloatingStation(route, "Silo", exit, SiloCenter, SiloBase, SiloHeight, 5.2f, 45f, MillCenter);
+            exit = AddFloatingStation(route, "Moinho", exit, MillCenter, MillBase, MillHeight, 4.6f, -45f, TowerCenter);
+            AddFloatingStation(route, "Caixa d'Agua", exit, TowerCenter, TowerBase, TowerHeight, 5.4f, 45f, null);
+            return route;
+        }
+
+        static Vector3 OnCircle(Vector2 center, float radius, float degrees, float y) =>
+            new(center.x + Mathf.Sin(degrees * Mathf.Deg2Rad) * radius, y, center.y + Mathf.Cos(degrees * Mathf.Deg2Rad) * radius);
+
+        static float AngleFrom(Vector2 center, Vector3 point) =>
+            Mathf.Atan2(point.x - center.x, point.z - center.y) * Mathf.Rad2Deg;
+
+        /// <summary>
+        /// Adds a floating bridge onto the building's island and a spiral from the island to its deck.
+        /// Returns the deck spot facing the next building, where the following bridge starts.
+        /// </summary>
+        static Vector3 AddFloatingStation(List<(string name, Vector3[] points)> route, string name, Vector3 start,
+            Vector2 center, float baseY, float height, float spiralRadius, float angleStep, Vector2? next)
+        {
+            var arrival = AngleFrom(center, start);
+            var landing = OnCircle(center, IslandLanding, arrival, baseY);
+            var jumps = Mathf.CeilToInt(Vector2.Distance(new Vector2(start.x, start.z), new Vector2(landing.x, landing.z)) / BridgeSpacing);
+            var bridge = new List<Vector3> { start };
+            for (var k = 1; k < jumps; k++) bridge.Add(Vector3.Lerp(start, landing, (float)k / jumps));
+            bridge.Add(landing);
+            route.Add(($"Ponte {name}", bridge.ToArray()));
+
+            var top = StationTop(baseY, height);
+            var spiral = new List<Vector3> { landing };
+            var turns = 0;
+            for (; baseY + (turns + 1) * StepRise <= top - 0.3f; turns++)
+                spiral.Add(OnCircle(center, spiralRadius, arrival + turns * angleStep, baseY + (turns + 1) * StepRise));
+            spiral.Add(OnCircle(center, DeckLanding, arrival + (turns - 1) * angleStep, top));
+            route.Add(($"Espiral {name}", spiral.ToArray()));
+
+            return next.HasValue
+                ? OnCircle(center, DeckLanding, AngleFrom(center, new Vector3(next.Value.x, 0f, next.Value.y)), top)
+                : default;
+        }
+
+        /// <summary>Throws when a jump is out of reach or a prop would hit the player's head.</summary>
+        public static void ValidateRoute(IReadOnlyList<(string name, Vector3[] points)> route)
+        {
+            var props = new List<Vector3>();
+            foreach (var (name, points) in route)
+            {
+                for (var i = 1; i < points.Length; i++)
+                {
+                    var rise = points[i].y - points[i - 1].y;
+                    var reach = Vector2.Distance(new Vector2(points[i].x, points[i].z), new Vector2(points[i - 1].x, points[i - 1].z));
+                    if (rise <= 0f || rise > MaxRise || reach > MaxReach)
+                        throw new System.InvalidOperationException(
+                            $"{name}: salto {i} fora de alcance (subida {rise:0.00} m, distancia {reach:0.00} m).");
+                }
+                for (var i = 1; i < points.Length - 1; i++) props.Add(points[i]);
+            }
+
+            for (var i = 0; i < props.Count; i++)
+                for (var j = i + 1; j < props.Count; j++)
+                    if (Vector2.Distance(new Vector2(props[i].x, props[i].z), new Vector2(props[j].x, props[j].z)) < MinPropSpacing
+                        && Mathf.Abs(props[i].y - props[j].y) < MinHeadroom)
+                        throw new System.InvalidOperationException($"Objetos da rota sobrepostos em {props[i]} e {props[j]}.");
+        }
+
         static void CreateComposedCourse(Dictionary<string, Material> materials)
         {
-            new GameObject("CENARIO_V7_SEM_TRILHO");
-            CreateBlock("Terreno da Fazenda", new Vector3(0f, -0.55f, 55f),
-                new Vector3(100f, 1f, 150f), materials["Green"], "Ground");
+            new GameObject("FAZENDA_VERTICAL_V11");
+            CreateFarmTerrain(materials);
+            CreateGroundedFarmRoute();
 
-            var anchors = new[]
+            var route = CourseRoute();
+            ValidateRoute(route);
+            var props = new GameObject("Rota - Objetos Flutuantes").transform;
+            var propIndex = 0;
+            foreach (var (name, points) in route)
             {
-                new Vector3(0f, 0.35f, 4f),       // entrada
-                new Vector3(-10f, 4.5f, 18f),     // feno e cercado
-                new Vector3(12f, 11f, 34f),       // telhado do celeiro
-                new Vector3(-12f, 14f, 49f),      // carga do galpao
-                new Vector3(-10f, 18.5f, 64f),    // cobertura do silo
-                new Vector3(12f, 22f, 78f),       // pomar e sacos
-                new Vector3(10f, 26f, 92f),       // moinho
-                new Vector3(-10f, 32f, 106f),     // armazem alto
-                new Vector3(0f, 38f, 120f)        // dedo
-            };
-
-            for (var sector = 0; sector < anchors.Length - 1; sector++)
-                CreateCourseSection(sector, anchors[sector], anchors[sector + 1], materials);
-        }
-
-        /// <summary>
-        /// Creates one themed section. Hay, crates, barrels, carts and wooden stairs
-        /// replace the former repeated slabs, so the route reads as part of the farm.
-        /// </summary>
-        /// <param name="sector">Zero-based sector number used for names and difficulty.</param>
-        /// <param name="start">World-space beginning of the section.</param>
-        /// <param name="end">World-space destination of the section.</param>
-        /// <param name="materials">Shared visual materials used by the platforms.</param>
-        static void CreateCourseSection(int sector, Vector3 start, Vector3 end,
-            Dictionary<string, Material> materials)
-        {
-            var route = end - start;
-            var horizontal = new Vector3(route.x, 0f, route.z).normalized;
-            var side = Vector3.Cross(Vector3.up, horizontal).normalized;
-            var propPaths = new[]
-            {
-                FarmProps + "Hay.fbx", FarmProps + "Crate.fbx",
-                FarmProps + "Barrel.fbx", FarmProps + "Bags.fbx"
-            };
-
-            // Two isolated props bridge each landmark. Dense repeated sequences resemble
-            // railway sleepers, so the landmark itself becomes the third landing.
-            for (var step = 0; step < 2; step++)
-            {
-                var progress = (step + 1f) / 3f;
-                var position = Vector3.Lerp(start, end, progress);
-                var weave = step == 0 ? -5.5f : 5.5f;
-                position += side * weave;
-
-                var propIndex = (sector * 2 + step) % propPaths.Length;
-                var colliderSize = propIndex switch
+                for (var i = 1; i < points.Length - 1; i++)
                 {
-                    0 => new Vector3(2.5f, 1.15f, 2.2f), // feno
-                    1 => new Vector3(2.3f, 1.15f, 2.3f), // caixa
-                    2 => new Vector3(2.1f, 1.4f, 2.1f),  // barril
-                    _ => new Vector3(2.6f, 1.05f, 2.2f)  // sacos
-                };
-                var rotation = Quaternion.LookRotation(horizontal, Vector3.up) *
-                    Quaternion.Euler(0f, (step % 3 - 1) * 8f, 0f);
-                var platform = CreateFarmPropLanding(
-                    $"Setor {sector + 1} - {System.IO.Path.GetFileNameWithoutExtension(propPaths[propIndex])} {step + 1}",
-                    propPaths[propIndex], position, rotation, colliderSize);
-
-                if (sector == 5 && step == 4)
-                {
-                    platform.name = "Plataforma Movel do Moinho";
-                    platform.layer = LayerMask.NameToLayer("MovingPlatform");
-                    platform.AddComponent<MovingPlatform>();
+                    var toNext = points[i + 1] - points[i];
+                    var yaw = Mathf.Atan2(toNext.x, toNext.z) * Mathf.Rad2Deg;
+                    CreateFarmPropLanding($"{name} {i}", FarmProps + RouteProps[propIndex++ % RouteProps.Length],
+                        points[i], Quaternion.Euler(0f, yaw, 0f), RoutePropSize).transform.SetParent(props, true);
                 }
             }
 
-            // The checkpoint surface is deliberately invisible. Nearby barn, silo and
-            // windmill geometry provide its visual context without another broad slab.
-            var restDeck = CreateBlock($"Setor {sector + 1} - Checkpoint Invisivel",
-                end - Vector3.up * 0.3f, new Vector3(4.2f, 0.6f, 4.2f), null, "Climbable");
-            SetVisible(restDeck, false);
-            CreateSplitTrigger(end + Vector3.up * 1.5f, $"Setor {sector + 1}");
+            // route[1 + 2k] is the bridge onto island k; its last point is the island landing.
+            CreateIsland("Silo", SiloCenter, SiloBase, Last(route[1].points), materials);
+            CreateIsland("Moinho", MillCenter, MillBase, Last(route[3].points), materials);
+            CreateIsland("Caixa d'Agua", TowerCenter, TowerBase, Last(route[5].points), materials);
+
+            // Each deck carries a beacon over the spot where the next bridge starts.
+            CreateStation("Celeiro", new Vector3(BarnCenter.x, StationTop(0f, BarnHeight), BarnCenter.y), new Vector3(5f, DeckThickness, 15f), route[1].points[0], materials);
+            CreateStation("Silo", new Vector3(SiloCenter.x, StationTop(SiloBase, SiloHeight), SiloCenter.y), new Vector3(5f, DeckThickness, 5f), route[3].points[0], materials);
+            CreateStation("Moinho", new Vector3(MillCenter.x, StationTop(MillBase, MillHeight), MillCenter.y), new Vector3(4.2f, DeckThickness, 4.2f), route[5].points[0], materials);
+            CreateStation("Caixa d'Agua", new Vector3(TowerCenter.x, StationTop(TowerBase, TowerHeight), TowerCenter.y), new Vector3(5f, DeckThickness, 5f), null, materials);
+        }
+
+        static Vector3 Last(Vector3[] points) => points[points.Length - 1];
+
+        /// <summary>Flat deck on top of a building, with a glowing beacon over the next segment's start.</summary>
+        static void CreateStation(string name, Vector3 deckTop, Vector3 deckSize, Vector3? beacon,
+            Dictionary<string, Material> materials)
+        {
+            CreateBlock($"Estacao {name}", deckTop - Vector3.up * deckSize.y * 0.5f, deckSize, materials["Wood"], "Climbable");
+            CreateSplitTrigger(deckTop + Vector3.up * 1.5f, name);
+            if (!beacon.HasValue) return;
+
+            var post = beacon.Value;
+            CreateVisual(PrimitiveType.Cube, $"Poste {name}", null, post + Vector3.up * 1.2f, new Vector3(0.15f, 2.4f, 0.15f), materials["Wood"]);
+            var lamp = CreateVisual(PrimitiveType.Sphere, $"Farol {name}", null, post + Vector3.up * 2.6f, Vector3.one * 0.6f, materials["Goal"]);
+            var light = lamp.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.55f, 0.18f);
+            light.range = 10f;
+            light.intensity = 3f;
+        }
+
+        /// <summary>
+        /// Grass disc with a hanging rock underside. It is solid, so a fall from the spiral lands
+        /// back on the island and the player retries from there instead of from the field.
+        /// </summary>
+        static void CreateIsland(string name, Vector2 center, float top, Vector3 landing, Dictionary<string, Material> materials)
+        {
+            var root = new GameObject($"Ilha {name}").transform;
+            var grass = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            grass.name = "Gramado";
+            grass.layer = LayerMask.NameToLayer("Ground");
+            grass.transform.SetParent(root, false);
+            grass.transform.position = new Vector3(center.x, top - 0.25f, center.y);
+            grass.transform.localScale = new Vector3(IslandRadius * 2f, 0.25f, IslandRadius * 2f);
+            grass.GetComponent<Renderer>().sharedMaterial = materials["Green"];
+            Object.DestroyImmediate(grass.GetComponent<Collider>());
+            grass.AddComponent<MeshCollider>();
+
+            CreateVisual(PrimitiveType.Sphere, "Terra", root, Vector3.zero, new Vector3(IslandRadius * 1.95f, 5f, IslandRadius * 1.95f), materials["Soil"])
+                .transform.position = new Vector3(center.x, top - 3f, center.y);
+            CreateVisual(PrimitiveType.Sphere, "Rocha", root, Vector3.zero, new Vector3(IslandRadius * 1.1f, 6f, IslandRadius * 1.1f), materials["Soil"])
+                .transform.position = new Vector3(center.x, top - 6f, center.y);
+
+            // Decor sits on the rim, away from where the bridge arrives, outside the spiral's footprint.
+            var arrival = AngleFrom(center, landing);
+            var decor = new[] { FarmProps + "Hay.fbx", Nature + "Bush_Common_Flowers.fbx", FarmProps + "Barrel.fbx",
+                Nature + "Flower_3_Group.fbx", FarmProps + "Bags.fbx", Nature + "Grass_Common_Tall.fbx", Nature + "Bush_Common.fbx" };
+            var heights = new[] { 1.1f, 1.2f, 1.1f, 0.6f, 0.8f, 0.7f, 1f };
+            for (var i = 0; i < decor.Length; i++)
+            {
+                var point = OnCircle(center, 8.1f, arrival + 70f + i * 37f, top);
+                CreateModel(decor[i], $"Enfeite {i + 1}", root, root.InverseTransformPoint(point),
+                    Quaternion.Euler(0f, i * 53f, 0f), heights[i], true);
+            }
+        }
+
+        static void CreateFarmTerrain(Dictionary<string, Material> materials)
+        {
+            CreateBlock("Pasto", new Vector3(0f, -0.6f, 60f), new Vector3(150f, 1.2f, 200f), materials["Green"], "Ground");
+            // Dirt surfaces are visual only, a hair above the grass, so they never trip the player.
+            CreateVisual(PrimitiveType.Cube, "Estrada de Terra", null, new Vector3(0f, 0.01f, 4f), new Vector3(6f, 0.02f, 34f), materials["Soil"]);
+            CreateVisual(PrimitiveType.Cube, "Terreiro do Celeiro", null, new Vector3(11f, 0.01f, 22.5f), new Vector3(24f, 0.02f, 8f), materials["Soil"]);
+        }
+
+        static Vector3 OnGround(float x, float z) => new(x, 0f, z);
+
+        /// <summary>Low hops on the ground that lead the player to the barn stairs.</summary>
+        static void CreateGroundedFarmRoute()
+        {
+            var positions = new[] { OnGround(0f, 7f), OnGround(-3f, 12f), OnGround(1f, 16.5f) };
+            var models = new[] { "Hay.fbx", "Crate.fbx", "Cart.fbx" };
+            for (var i = 0; i < positions.Length; i++)
+            {
+                var size = new Vector3(i == 2 ? 3.2f : 2.5f, 1.05f + i % 2 * 0.25f, 2.4f);
+                CreateFarmPropLanding($"Rota Rural {i + 1}", FarmProps + models[i],
+                    positions[i] + Vector3.up * size.y, Quaternion.Euler(0f, i * 31f - 20f, 0f), size);
+            }
+            CreateSplitTrigger(new Vector3(0f, 1.5f, 6f), "Largada");
         }
 
         /// <summary>
@@ -435,9 +555,27 @@ namespace DevGames.Editor
             collider.transform.rotation = rotation;
 
             SetVisible(collider, false);
-            CreateStableFarmProp(name, modelPath, center, rotation, colliderSize);
+            FitToBox(CreateStableFarmProp(name, modelPath, center, Quaternion.identity, colliderSize),
+                center, rotation, colliderSize);
 
             return collider;
+        }
+
+        /// <summary>Stretches a visual so it fills the gameplay box exactly: no invisible ledges.</summary>
+        static void FitToBox(GameObject visual, Vector3 center, Quaternion rotation, Vector3 size)
+        {
+            var renderers = visual.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0) return;
+            var bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+
+            // A world-aligned parent avoids skewing FBX roots that carry their own axis rotation.
+            var pivot = new GameObject(visual.name + " Ajuste").transform;
+            pivot.position = bounds.center;
+            visual.transform.SetParent(pivot, true);
+            pivot.localScale = new Vector3(size.x / Mathf.Max(bounds.size.x, 0.01f),
+                size.y / Mathf.Max(bounds.size.y, 0.01f), size.z / Mathf.Max(bounds.size.z, 0.01f));
+            pivot.SetPositionAndRotation(center, rotation);
         }
 
         /// <summary>
@@ -453,6 +591,10 @@ namespace DevGames.Editor
         static GameObject CreateStableFarmProp(string name, string sourceHint, Vector3 center,
             Quaternion rotation, Vector3 size)
         {
+            var model = CreateModel(sourceHint, name, null, center - Vector3.up * size.y * 0.5f,
+                rotation, size.y, true);
+            if (model != null) return model;
+
             var root = new GameObject(name + " Visual");
             root.transform.SetPositionAndRotation(center, rotation);
             var straw = AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Straw.mat");
@@ -499,34 +641,16 @@ namespace DevGames.Editor
 
         static void CreateFarmLandmarks(Dictionary<string, Material> materials)
         {
-            CreateBarn(new Vector3(12f, 0f, 34f), materials);
-            CreateSilo(new Vector3(-10f, 0f, 64f), materials);
-            CreateWindmill(new Vector3(10f, 0f, 92f), materials);
+            CreateBarn(OnGround(BarnCenter.x, BarnCenter.y), materials);
+            CreateSilo(new Vector3(SiloCenter.x, SiloBase, SiloCenter.y), materials);
+            CreateWindmill(new Vector3(MillCenter.x, MillBase, MillCenter.y), materials);
+            CreateModel(FarmBuildings + "WaterTower.fbx", "Caixa d'Agua do Mirante", null,
+                new Vector3(TowerCenter.x, TowerBase, TowerCenter.y), Quaternion.Euler(0f, 20f, 0f), TowerHeight, true);
+            var towerBody = CreateBlock("Caixa d'Agua Collider", new Vector3(TowerCenter.x, TowerBase + TowerHeight * 0.5f, TowerCenter.y),
+                new Vector3(4f, TowerHeight, 4f), materials["Metal"], "CameraBlocker");
+            SetVisible(towerBody, false);
 
-            // Trees frame the farm entrance at ground level. Elevated landmarks remain
-            // dedicated to the parkour route, avoiding the previous floating-tree effect.
-            var treePositions = new[]
-            {
-                new Vector3(-29f, 0f, -12f), new Vector3(-22f, 0f, -18f),
-                new Vector3(-30f, 0f, 0f), new Vector3(-27f, 0f, 14f),
-                new Vector3(-31f, 0f, 29f), new Vector3(-24f, 0f, 42f),
-                new Vector3(-34f, 0f, 72f), new Vector3(-32f, 0f, 112f),
-                new Vector3(-35f, 0f, 148f), new Vector3(-31f, 0f, 187f),
-                new Vector3(29f, 0f, -13f), new Vector3(22f, 0f, -19f),
-                new Vector3(31f, 0f, 1f), new Vector3(27f, 0f, 16f),
-                new Vector3(30f, 0f, 30f), new Vector3(23f, 0f, 44f),
-                new Vector3(34f, 0f, 78f), new Vector3(31f, 0f, 118f),
-                new Vector3(35f, 0f, 157f), new Vector3(30f, 0f, 198f)
-            };
-            for (var i = 0; i < treePositions.Length; i++)
-            {
-                var treePath = Nature + $"CommonTree_{i % 5 + 1}.fbx";
-                CreateModel(treePath, $"Arvore {i + 1}", null, treePositions[i], Quaternion.Euler(0f, i * 47f, 0f), 6.5f + i % 3, true);
-            }
-
-            CreateFarmDecorations();
-            CreateSiloYard(new Vector3(-10f, 0f, 64f));
-            CreateWindmillYard(new Vector3(10f, 0f, 92f));
+            CreateGroundFarm();
         }
 
         static void CreateBarn(Vector3 groundPosition, Dictionary<string, Material> materials)
@@ -534,7 +658,7 @@ namespace DevGames.Editor
             var barn = CreateBlock("Celeiro Collider", groundPosition + Vector3.up * 4.5f, new Vector3(12f, 9f, 15f), materials["BarnRed"], "CameraBlocker");
             var roof = CreateBlock("Celeiro Telhado", groundPosition + Vector3.up * 10.5f, new Vector3(13f, 1.1f, 16f), materials["Roof"], "Climbable");
             roof.transform.rotation = Quaternion.Euler(0f, 0f, 7f);
-            var model = CreateModel(FarmBuildings + "BigBarn.fbx", "Celeiro", null, groundPosition, Quaternion.Euler(0f, 90f, 0f), 13f, true);
+            var model = CreateModel(FarmBuildings + "BigBarn.fbx", "Celeiro", null, groundPosition, Quaternion.Euler(0f, 90f, 0f), BarnHeight, true);
             if (model != null)
             {
                 SetVisible(barn, false);
@@ -542,125 +666,210 @@ namespace DevGames.Editor
             }
         }
 
-        static void CreateSilo(Vector3 groundPosition, Dictionary<string, Material> materials)
+        static void CreateSilo(Vector3 basePosition, Dictionary<string, Material> materials)
         {
-            var silo = CreateBlock("Silo Collider", groundPosition + Vector3.up * 9f, new Vector3(7f, 18f, 7f), materials["Metal"], "CameraBlocker");
+            // The body keeps the primitive's capsule collider, so the spiral hugs a round wall.
+            var silo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            silo.name = "Silo Vertical";
             silo.layer = LayerMask.NameToLayer("CameraBlocker");
-            SetVisible(silo, false);
-            var visual = new GameObject("Silo Vertical");
-            visual.transform.position = groundPosition;
-            CreateVisual(PrimitiveType.Cylinder, "Corpo Metalico", visual.transform, Vector3.up * 7.5f,
-                new Vector3(3.3f, 7.5f, 3.3f), materials["Metal"]);
-            CreateVisual(PrimitiveType.Sphere, "Cobertura Curva", visual.transform, Vector3.up * 15.2f,
-                new Vector3(3.45f, 1.7f, 3.45f), materials["Roof"]);
-            for (var i = 0; i < 4; i++)
-                CreateVisual(PrimitiveType.Cube, $"Cinta {i + 1}", visual.transform,
-                    Vector3.up * (3f + i * 3f), new Vector3(6.9f, 0.12f, 0.18f), materials["Cream"]);
+            silo.transform.position = basePosition + Vector3.up * SiloHeight * 0.5f;
+            silo.transform.localScale = new Vector3(7f, SiloHeight * 0.5f, 7f);
+            silo.GetComponent<Renderer>().sharedMaterial = materials["Metal"];
+            for (var y = 3f; y < SiloHeight; y += 3.5f)
+                CreateVisual(PrimitiveType.Cylinder, $"Cinta {y:0}", null,
+                    basePosition + Vector3.up * y, new Vector3(7.12f, 0.06f, 7.12f), materials["Cream"]);
         }
 
-        static void CreateWindmill(Vector3 groundPosition, Dictionary<string, Material> materials)
+        static void CreateWindmill(Vector3 basePosition, Dictionary<string, Material> materials)
         {
-            var tower = CreateBlock("Torre do Moinho", groundPosition + Vector3.up * 7f, new Vector3(4f, 14f, 4f), materials["Cream"], "CameraBlocker");
+            // Fallback geometry was authored for a 44 m windmill; scale it with the model.
+            var s = MillHeight / 44f;
+            var tower = CreateBlock("Torre do Moinho", basePosition + Vector3.up * MillHeight * 0.5f, new Vector3(5f * s, MillHeight, 5f * s), materials["Cream"], "CameraBlocker");
             var rotor = new GameObject("Pás do Moinho");
-            rotor.transform.position = groundPosition + new Vector3(0f, 12f, -2.2f);
+            rotor.transform.position = basePosition + new Vector3(0f, 35f * s, -2.8f * s);
             for (var i = 0; i < 4; i++)
             {
-                var blade = CreateVisual(PrimitiveType.Cube, $"Pá {i + 1}", rotor.transform, Quaternion.Euler(0f, 0f, i * 90f) * Vector3.up * 3f, new Vector3(0.7f, 6f, 0.25f), materials["Wood"]);
+                var blade = CreateVisual(PrimitiveType.Cube, $"Pá {i + 1}", rotor.transform, Quaternion.Euler(0f, 0f, i * 90f) * Vector3.up * 3f * s, new Vector3(0.7f, 6f, 0.25f) * s, materials["Wood"]);
                 blade.transform.localRotation = Quaternion.Euler(0f, 0f, i * 90f);
             }
             rotor.AddComponent<WindmillRotor>();
-            if (CreateModel(FarmBuildings + "TowerWindmill.fbx", "Moinho Visual", null, groundPosition, Quaternion.Euler(0f, 180f, 0f), 21f, true) != null)
+            if (CreateModel(FarmBuildings + "TowerWindmill.fbx", "Moinho Visual", null, basePosition, Quaternion.Euler(0f, 180f, 0f), MillHeight, true) != null)
             {
                 SetVisible(tower, false);
                 SetVisible(rotor, false);
             }
         }
 
-        static void CreateFarmDecorations()
+        // Ground areas kept free of scattered vegetation: road, buildings, stairs, field and pen.
+        static readonly Rect[] BusyGround =
         {
-            // The entrance remains open for the tutorial while buildings form readable
-            // clusters on the sides of the playable route.
-            CreateModel(TractorModel, "Trator", null, new Vector3(16f, 0f, -7f), Quaternion.Euler(0f, -25f, 0f), 2.7f, true);
-            CreateModel(FarmBuildings + "OpenBarn.fbx", "Galpao", null, new Vector3(-19f, 0f, -7f), Quaternion.Euler(0f, 18f, 0f), 6.5f, true);
-            CreateModel(FarmBuildings + "ChickenCoop.fbx", "Galinheiro", null, new Vector3(-20f, 0f, 15f), Quaternion.Euler(0f, 12f, 0f), 3.2f, true);
-            CreateModel(FarmBuildings + "Well.fbx", "Poco", null, new Vector3(18f, 0f, 12f), Quaternion.identity, 2.8f, true);
+            new(-5f, -14f, 10f, 37f),    // road and the first hops
+            new(-1f, 17f, 25f, 27f),     // barn, its stairs and yard
+            new(19f, 28f, 9f, 18f),      // barn storage
+            new(-29f, 19f, 20f, 30f),    // vegetable field
+            new(22f, 0f, 22f, 32f),      // animal pen
+            new(-26f, -14f, 15f, 15f),   // machine shed
+            new(11f, -12f, 10f, 10f),    // tractor
+            new(-25f, 10f, 10f, 10f),    // chicken coop
+            new(14f, 8f, 7f, 7f),        // well
+            new(-25f, 50f, 12f, 10f),    // harvest storehouse
+            new(21f, 65f, 10f, 10f),     // small windmill
+            new(-31f, 93f, 10f, 10f)     // silo house
+        };
 
-            // Two straight fence lines define a crop field without blocking the first jumps.
-            for (var i = 0; i < 8; i++)
+        /// <summary>
+        /// The field the player starts in, laid out in readable zones: entrance, vegetable field
+        /// on the left, animal pen on the right, storage beside the barn, pasture under the islands.
+        /// </summary>
+        static void CreateGroundFarm()
+        {
+            var entrance = new GameObject("Zona - Entrada").transform;
+            CreateModel(FarmBuildings + "OpenBarn.fbx", "Galpao de Maquinas", entrance, OnGround(-19f, -7f), Quaternion.Euler(0f, 90f, 0f), 6.5f, true);
+            CreateModel(TractorModel, "Trator", entrance, OnGround(16f, -7f), Quaternion.Euler(0f, -25f, 0f), 2.7f, true);
+            CreateModel(FarmProps + "Cart.fbx", "Carroca", entrance, OnGround(-12f, -3f), Quaternion.Euler(0f, 30f, 0f), 1.6f, true);
+            CreateModel(FarmBuildings + "ChickenCoop.fbx", "Galinheiro", entrance, OnGround(-20f, 15f), Quaternion.Euler(0f, 90f, 0f), 3.2f, true);
+            CreateModel(FarmBuildings + "Well.fbx", "Poco", entrance, OnGround(17.5f, 11.5f), Quaternion.identity, 2.8f, true);
+            PropRow(entrance, "Feno do Galpao", "Hay.fbx", new Vector3(-23f, 0f, -1f), Vector3.right * 2.4f, 3, 1.1f);
+            PropRow(entrance, "Barris do Galpao", "Barrel.fbx", new Vector3(-14f, 0f, -12f), Vector3.right * 1.3f, 3, 1.1f);
+            for (var i = 0; i < 6; i++)
             {
-                var z = 23f + i * 3.1f;
-                CreateModel(FarmBuildings + (i % 2 == 0 ? "Fence.fbx" : "Fence2.fbx"), $"Cerca Esquerda {i + 1}", null, new Vector3(-25f, 0f, z), Quaternion.Euler(0f, 90f, 0f), 1.4f, true);
-                CreateModel(FarmBuildings + (i % 2 == 0 ? "Fence2.fbx" : "Fence.fbx"), $"Cerca Direita {i + 1}", null, new Vector3(-8f, 0f, z), Quaternion.Euler(0f, 90f, 0f), 1.4f, true);
+                // Fence lines flank the entrance road and open where it meets the barn yard.
+                CreateModel(FarmBuildings + "Fence.fbx", $"Cerca da Estrada E{i + 1}", entrance, OnGround(-4.5f, -12f + i * 3.1f), Quaternion.Euler(0f, 90f, 0f), 1.2f, true);
+                CreateModel(FarmBuildings + "Fence.fbx", $"Cerca da Estrada D{i + 1}", entrance, OnGround(4.5f, -12f + i * 3.1f), Quaternion.Euler(0f, 90f, 0f), 1.2f, true);
             }
+            CreateWanderingAnimal("Cachorro", "Pug.fbx", OnGround(6f, 2f), 0.7f, 3f, 0.9f);
 
-            for (var row = 0; row < 3; row++)
-            {
-                for (var column = 0; column < 5; column++)
-                {
-                    var crop = (row + column) % 2 == 0 ? "Wheat_Crop.fbx" : "Corn_Crop.fbx";
-                    CreateModel(Crops + crop, $"Plantacao {row + 1}-{column + 1}", null,
-                        new Vector3(-21f + column * 2.5f, 0f, 26f + row * 7f), Quaternion.identity, 1.5f, true);
-                }
-            }
+            CreateVegetableField(new GameObject("Zona - Horta").transform);
+            CreateAnimalPen(new GameObject("Zona - Curral").transform);
 
-            CreateGroundPropClusters();
-            CreateWanderingAnimal("Vaca 1", "Cow.fbx", new Vector3(22f, 0f, 24f), 1.7f, 7f, 0.65f);
-            CreateWanderingAnimal("Vaca 2", "Cow.fbx", new Vector3(29f, 0f, 52f), 1.6f, 6f, 0.58f);
-            CreateWanderingAnimal("Cavalo", "Horse.fbx", new Vector3(27f, 0f, 34f), 2.1f, 8f, 0.85f);
-            CreateWanderingAnimal("Ovelha 1", "Sheep.fbx", new Vector3(18f, 0f, 42f), 1.2f, 6f, 0.48f);
-            CreateWanderingAnimal("Ovelha 2", "Sheep.fbx", new Vector3(24f, 0f, 47f), 1.1f, 5f, 0.52f);
-            CreateWanderingAnimal("Porco", "Pig.fbx", new Vector3(-31f, 0f, 58f), 1.0f, 5f, 0.45f);
-            CreateWanderingAnimal("Lhama", "Llama.fbx", new Vector3(31f, 0f, 79f), 1.8f, 6f, 0.62f);
+            var storage = new GameObject("Zona - Deposito do Celeiro").transform;
+            PropRow(storage, "Caixas", "Crate.fbx", new Vector3(21f, 0f, 30f), Vector3.forward * 1.6f, 4, 1.2f);
+            PropRow(storage, "Caixas Empilhadas", "Crate.fbx", new Vector3(21f, 1.2f, 30.8f), Vector3.forward * 1.6f, 2, 1.2f);
+            PropRow(storage, "Sacos", "Bags.fbx", new Vector3(23.5f, 0f, 31f), Vector3.forward * 2f, 3, 0.9f);
+            PropRow(storage, "Barris", "Barrel.fbx", new Vector3(21f, 0f, 38f), Vector3.forward * 1.3f, 4, 1.1f);
+            PropRow(storage, "Fardos", "Hay.fbx", new Vector3(24f, 0f, 38f), Vector3.forward * 2.4f, 3, 1.1f);
+            CreateModel(FarmProps + "Cart.fbx", "Carroca do Celeiro", storage, OnGround(25.5f, 44f), Quaternion.Euler(0f, -60f, 0f), 1.6f, true);
+
+            var pasture = new GameObject("Zona - Pasto").transform;
+            CreateModel(FarmBuildings + "SmallBarn.fbx", "Armazem da Colheita", pasture, OnGround(-19f, 55f), Quaternion.Euler(0f, 90f, 0f), 6f, true);
+            CreateModel(FarmBuildings + "Windmill.fbx", "Moinho Pequeno", pasture, OnGround(26f, 70f), Quaternion.Euler(0f, -30f, 0f), 9f, true);
+            CreateModel(FarmBuildings + "Silo_House.fbx", "Casa do Silo", pasture, OnGround(-26f, 98f), Quaternion.Euler(0f, 60f, 0f), 8f, true);
+            for (var i = 0; i < 6; i++)
+                CreateModel(FarmProps + "Hay.fbx", $"Fardo no Pasto {i + 1}", pasture,
+                    OnGround(-6f + (i % 3) * 14f, 62f + (i / 3) * 34f), Quaternion.Euler(0f, i * 40f, 0f), 1.2f, true);
+            CreateWanderingAnimal("Ovelha do Pasto 1", "Sheep.fbx", OnGround(2f, 75f), 1.2f, 9f, 0.45f);
+            CreateWanderingAnimal("Ovelha do Pasto 2", "Sheep.fbx", OnGround(-4f, 84f), 1.1f, 9f, 0.5f);
+            CreateWanderingAnimal("Vaca do Pasto", "Cow.fbx", OnGround(18f, 104f), 1.7f, 10f, 0.55f);
+            CreateWanderingAnimal("Lhama", "Llama.fbx", OnGround(-14f, 120f), 1.8f, 8f, 0.6f);
+
+            CreateNature(new GameObject("Zona - Natureza").transform);
         }
 
-        /// <summary>Creates believable work piles across the lower farm without blocking the route.</summary>
-        static void CreateGroundPropClusters()
+        /// <summary>Fenced vegetable plot, one crop per row so it reads as a planted field.</summary>
+        static void CreateVegetableField(Transform root)
         {
-            var positions = new[]
+            CreateVisual(PrimitiveType.Cube, "Terra Arada", root, new Vector3(-19f, 0.01f, 34f), new Vector3(16f, 0.02f, 26f),
+                AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Soil.mat"));
+            var crops = new[] { "Wheat_Crop.fbx", "Corn_Crop.fbx", "Carrot_Crop.fbx", "Lettuce_Crop.fbx", "Pumpkin_Crop.fbx", "Wheat_Crop.fbx" };
+            var heights = new[] { 1.5f, 1.7f, 0.6f, 0.5f, 0.7f, 1.5f };
+            for (var row = 0; row < crops.Length; row++)
+                for (var i = 0; i < 11; i++)
+                    CreateModel(Crops + crops[row], $"Canteiro {row + 1}-{i + 1}", root,
+                        OnGround(-25.5f + row * 2.6f, 23f + i * 2.2f), Quaternion.Euler(0f, i * 23f, 0f), heights[row], true);
+
+            // Gate on the side facing the road (x = -11, z 31-35).
+            FenceLine(root, "Cerca da Horta Oeste", new Vector3(-27.5f, 0f, 21f), Vector3.forward, 26f);
+            FenceLine(root, "Cerca da Horta Sul", new Vector3(-27.5f, 0f, 21f), Vector3.right, 16.5f);
+            FenceLine(root, "Cerca da Horta Norte", new Vector3(-27.5f, 0f, 47f), Vector3.right, 16.5f);
+            FenceLine(root, "Cerca da Horta Leste A", new Vector3(-11f, 0f, 21f), Vector3.forward, 10f);
+            FenceLine(root, "Cerca da Horta Leste B", new Vector3(-11f, 0f, 35f), Vector3.forward, 12f);
+            PropRow(root, "Cestos da Colheita", "Bags.fbx", new Vector3(-9f, 0f, 37f), Vector3.forward * 2f, 2, 0.9f);
+        }
+
+        /// <summary>Fenced pen with animals that stay inside it, plus hay and water barrels.</summary>
+        static void CreateAnimalPen(Transform root)
+        {
+            CreateVisual(PrimitiveType.Cube, "Chao do Curral", root, new Vector3(33f, 0.01f, 16f), new Vector3(20f, 0.02f, 30f),
+                AssetDatabase.LoadAssetAtPath<Material>($"{MaterialRoot}/Soil.mat"));
+            // Gate on the side facing the road (x = 23, z 12-16).
+            FenceLine(root, "Cerca do Curral Oeste A", new Vector3(23f, 0f, 1f), Vector3.forward, 11f);
+            FenceLine(root, "Cerca do Curral Oeste B", new Vector3(23f, 0f, 16f), Vector3.forward, 15f);
+            FenceLine(root, "Cerca do Curral Leste", new Vector3(43f, 0f, 1f), Vector3.forward, 30f);
+            FenceLine(root, "Cerca do Curral Sul", new Vector3(23f, 0f, 1f), Vector3.right, 20f);
+            FenceLine(root, "Cerca do Curral Norte", new Vector3(23f, 0f, 31f), Vector3.right, 20f);
+            PropRow(root, "Feno do Curral", "Hay.fbx", new Vector3(41f, 0f, 4f), Vector3.forward * 2.4f, 4, 1.1f);
+            PropRow(root, "Bebedouro", "Barrel.fbx", new Vector3(26f, 0f, 28f), Vector3.right * 1.3f, 3, 1f);
+
+            // Each animal's wander radius keeps it inside the 20 x 30 m pen.
+            CreateWanderingAnimal("Vaca 1", "Cow.fbx", OnGround(30f, 8f), 1.7f, 5f, 0.6f);
+            CreateWanderingAnimal("Vaca 2", "Cow.fbx", OnGround(36f, 22f), 1.6f, 5f, 0.55f);
+            CreateWanderingAnimal("Cavalo", "Horse.fbx", OnGround(34f, 15f), 2.1f, 6f, 0.8f);
+            CreateWanderingAnimal("Ovelha 1", "Sheep.fbx", OnGround(28f, 22f), 1.2f, 4f, 0.45f);
+            CreateWanderingAnimal("Ovelha 2", "Sheep.fbx", OnGround(30f, 26f), 1.1f, 3.5f, 0.5f);
+            CreateWanderingAnimal("Ovelha 3", "Sheep.fbx", OnGround(38f, 27f), 1.15f, 3f, 0.48f);
+            CreateWanderingAnimal("Porco 1", "Pig.fbx", OnGround(38f, 7f), 1f, 3.5f, 0.42f);
+            CreateWanderingAnimal("Porco 2", "Pig.fbx", OnGround(27f, 6f), 0.9f, 3f, 0.4f);
+        }
+
+        /// <summary>Trees frame the field; grass, flowers, bushes and stones fill the free ground.</summary>
+        static void CreateNature(Transform root)
+        {
+            var random = new System.Random(7);
+            var trees = new[] { "CommonTree_1.fbx", "CommonTree_2.fbx", "CommonTree_3.fbx", "CommonTree_4.fbx", "CommonTree_5.fbx", "Pine_1.fbx", "Pine_2.fbx", "Pine_3.fbx" };
+            var t = 0;
+            for (var z = -24f; z <= 150f; z += 9f)
             {
-                new Vector3(9f, 0f, 10f), new Vector3(12f, 0f, 13f), new Vector3(-7f, 0f, 18f),
-                new Vector3(7f, 0f, 31f), new Vector3(20f, 0f, 57f), new Vector3(-29f, 0f, 70f),
-                new Vector3(8f, 0f, 83f), new Vector3(28f, 0f, 105f)
-            };
-            var models = new[] { "Hay.fbx", "Crate.fbx", "Barrel.fbx", "Bags.fbx" };
-            for (var i = 0; i < positions.Length; i++)
-            {
-                var size = new Vector3(2.2f, 1.2f + i % 3 * 0.2f, 2f);
-                CreateStableFarmProp($"Material da Fazenda {i + 1}", FarmProps + models[i % models.Length],
-                    positions[i] + Vector3.up * size.y * 0.5f, Quaternion.Euler(0f, i * 41f, 0f), size);
+                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], new Vector2(-50f - Jitter(random, 4f), z + Jitter(random, 3f)), 7f, 10f, random);
+                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], new Vector2(50f + Jitter(random, 4f), z + Jitter(random, 3f)), 7f, 10f, random);
             }
-            CreateStableFarmProp("Carga do Celeiro", FarmProps + "Crate.fbx",
-                new Vector3(22f, 0.8f, 58f), Quaternion.Euler(0f, -35f, 0f), new Vector3(3f, 1.6f, 2.6f));
-            CreateStableFarmProp("Feno do Galpao", FarmProps + "Hay.fbx",
-                new Vector3(-14f, 0.7f, 2f), Quaternion.Euler(0f, 90f, 0f), new Vector3(3f, 1.4f, 2.2f));
+            for (var x = -44f; x <= 44f; x += 8f)
+                PlaceNature(root, $"Arvore {++t}", trees[t % trees.Length], new Vector2(x + Jitter(random, 2f), -26f - Jitter(random, 3f)), 7f, 10f, random);
+
+            Scatter(root, "Arvore do Pasto", new[] { "CommonTree_2.fbx", "CommonTree_4.fbx", "TwistedTree_1.fbx", "TwistedTree_3.fbx" }, 14, new Rect(-44f, 46f, 88f, 100f), 6f, 9f, random);
+            Scatter(root, "Arbusto", new[] { "Bush_Common.fbx", "Bush_Common_Flowers.fbx", "Plant_1_Big.fbx", "Plant_7_Big.fbx" }, 60, new Rect(-46f, -24f, 92f, 170f), 0.8f, 1.6f, random);
+            Scatter(root, "Flores", new[] { "Flower_3_Group.fbx", "Flower_4_Group.fbx", "Flower_3_Single.fbx", "Flower_4_Single.fbx", "Clover_1.fbx" }, 120, new Rect(-46f, -24f, 92f, 170f), 0.3f, 0.6f, random);
+            Scatter(root, "Capim", new[] { "Grass_Common_Tall.fbx", "Grass_Common_Short.fbx", "Grass_Wispy_Tall.fbx", "Grass_Wispy_Short.fbx", "Fern_1.fbx" }, 220, new Rect(-46f, -24f, 92f, 170f), 0.4f, 0.9f, random);
+            Scatter(root, "Pedra", new[] { "Rock_Medium_1.fbx", "Rock_Medium_2.fbx", "Rock_Medium_3.fbx", "Pebble_Round_2.fbx", "Mushroom_Common.fbx" }, 30, new Rect(-46f, -24f, 92f, 170f), 0.3f, 1f, random);
+
+            // Stepping stones from the road to the field gate and to the pen gate.
+            for (var i = 0; i < 4; i++)
+            {
+                PlaceNature(root, $"Caminho da Horta {i + 1}", "RockPath_Round_Small_1.fbx", new Vector2(-5.5f - i * 1.4f, 33f), 0.1f, 0.1f, random);
+                PlaceNature(root, $"Caminho do Curral {i + 1}", "RockPath_Round_Small_2.fbx", new Vector2(5.5f + i * 4.3f, 14f), 0.1f, 0.1f, random);
+            }
         }
 
-        /// <summary>Surrounds the silo with storage and a fence so it belongs to the farmyard.</summary>
-        /// <param name="center">Ground position of the silo.</param>
-        static void CreateSiloYard(Vector3 center)
+        static float Jitter(System.Random random, float amount) => ((float)random.NextDouble() - 0.5f) * 2f * amount;
+
+        static void PlaceNature(Transform root, string name, string file, Vector2 point, float minHeight, float maxHeight, System.Random random) =>
+            CreateModel(Nature + file, name, root, OnGround(point.x, point.y), Quaternion.Euler(0f, random.Next(360), 0f),
+                Mathf.Lerp(minHeight, maxHeight, (float)random.NextDouble()), true);
+
+        /// <summary>Places models at random spots in an area, skipping the busy ground. Seeded, so builds are stable.</summary>
+        static void Scatter(Transform root, string label, string[] files, int count, Rect area, float minHeight, float maxHeight, System.Random random)
         {
-            CreateModel(FarmBuildings + "SmallBarn.fbx", "Deposito do Silo", null,
-                center + new Vector3(12f, 0f, 4f), Quaternion.Euler(0f, -90f, 0f), 5.5f, true);
-            for (var i = 0; i < 5; i++)
-                CreateModel(FarmBuildings + "Fence.fbx", $"Cerca do Silo {i + 1}", null,
-                    center + new Vector3(-8f + i * 4f, 0f, -8f), Quaternion.identity, 1.3f, true);
-            CreateStableFarmProp("Feno do Silo", FarmProps + "Hay.fbx", center + new Vector3(7f, 0.7f, -4f), Quaternion.identity, new Vector3(2.8f, 1.4f, 2.2f));
-            CreateStableFarmProp("Barril do Silo", FarmProps + "Barrel.fbx", center + new Vector3(-6f, 0.8f, 4f), Quaternion.identity, new Vector3(1.6f, 1.6f, 1.6f));
+            for (int placed = 0, tries = 0; placed < count && tries < count * 20; tries++)
+            {
+                var point = new Vector2(Mathf.Lerp(area.xMin, area.xMax, (float)random.NextDouble()), Mathf.Lerp(area.yMin, area.yMax, (float)random.NextDouble()));
+                if (BusyGround.Any(zone => zone.Contains(point))) continue;
+                PlaceNature(root, $"{label} {placed + 1}", files[placed % files.Length], point, minHeight, maxHeight, random);
+                placed++;
+            }
         }
 
-        /// <summary>Creates crops and supplies around the windmill to explain its location.</summary>
-        /// <param name="center">Ground position of the windmill.</param>
-        static void CreateWindmillYard(Vector3 center)
+        static void PropRow(Transform root, string name, string file, Vector3 start, Vector3 step, int count, float height)
         {
-            for (var row = 0; row < 3; row++)
-                for (var column = 0; column < 4; column++)
-                    CreateModel(Crops + (column % 2 == 0 ? "Wheat_4.fbx" : "Corn_4.fbx"),
-                        $"Plantacao do Moinho {row + 1}-{column + 1}", null,
-                        center + new Vector3(-14f + column * 2.4f, 0f, -5f + row * 3f), Quaternion.identity, 1.3f, true);
-            CreateStableFarmProp("Carga do Moinho", FarmProps + "Crate.fbx",
-                center + new Vector3(8f, 0.8f, -5f), Quaternion.Euler(0f, 30f, 0f), new Vector3(2.8f, 1.6f, 2.4f));
-            CreateStableFarmProp("Sacos de Graos do Moinho", FarmProps + "Bags.fbx",
-                center + new Vector3(5f, 0.65f, 3f), Quaternion.Euler(0f, -20f, 0f), new Vector3(2.6f, 1.3f, 2.2f));
+            for (var i = 0; i < count; i++)
+                CreateModel(FarmProps + file, $"{name} {i + 1}", root, start + step * i, Quaternion.Euler(0f, i * 17f, 0f), height, true);
+        }
+
+        static void FenceLine(Transform root, string name, Vector3 start, Vector3 direction, float length)
+        {
+            const float segment = 3.1f;
+            var rotation = Quaternion.LookRotation(Vector3.Cross(Vector3.up, direction));
+            for (var i = 0; i * segment < length; i++)
+                CreateModel(FarmBuildings + (i % 2 == 0 ? "Fence.fbx" : "Fence2.fbx"), $"{name} {i + 1}", root,
+                    start + direction * (i * segment + segment * 0.5f), rotation, 1.3f, true);
         }
 
         /// <summary>Creates one animal and gives it a bounded autonomous walking area.</summary>
@@ -681,9 +890,9 @@ namespace DevGames.Editor
             var flock = new GameObject("Bando de Passaros");
             var centers = new[]
             {
-                new Vector3(0f, 15f, 34f),
-                new Vector3(-8f, 25f, 96f),
-                new Vector3(10f, 35f, 154f)
+                new Vector3(0f, 18f, 34f),
+                new Vector3(-8f, 45f, 80f),
+                new Vector3(10f, 70f, 120f)
             };
 
             for (var i = 0; i < 7; i++)
@@ -730,15 +939,15 @@ namespace DevGames.Editor
         static void CreateTutorials(GameplayHUD hud)
         {
             CreateTutorialTrigger(new Vector3(0f, 1f, 2f), new Vector3(8f, 3f, 5f), hud, "WASD para mover  •  Mouse para olhar  •  Espaço para pular");
-            CreateTutorialTrigger(new Vector3(0f, 19f, 43f), new Vector3(10f, 5f, 8f), hud, "Segure Shift para correr e ganhar impulso");
-            CreateTutorialTrigger(new Vector3(0f, 34f, 72f), new Vector3(10f, 5f, 8f), hud, "Ao agarrar uma borda, pressione Espaço para subir");
+            CreateTutorialTrigger(OnGround(5f, 20.8f) + Vector3.up, new Vector3(6f, 3f, 4f), hud, "Ao agarrar uma borda, pressione Espaço para subir");
+            CreateTutorialTrigger(new Vector3(BarnCenter.x, StationTop(0f, BarnHeight) + 1.5f, BarnCenter.y), new Vector3(5f, 3f, 14f), hud, "Siga o farol laranja  •  Segure Shift para correr e ganhar impulso");
             CreateTutorialTrigger(new Vector3(0f, 2f, -5f), new Vector3(10f, 4f, 5f), hud, "R retorna ao início sem reiniciar o cronômetro");
         }
 
         static void CreateGoal(Dictionary<string, Material> materials)
         {
             var goal = new GameObject("Primeiro Dedo");
-            goal.transform.position = new Vector3(0f, 39.5f, 120f);
+            goal.transform.position = new Vector3(TowerCenter.x, StationTop(TowerBase, TowerHeight) + 1.1f, TowerCenter.y);
             goal.layer = LayerMask.NameToLayer("Collectible");
             var collider = goal.AddComponent<CapsuleCollider>();
             collider.isTrigger = true;
@@ -897,8 +1106,9 @@ namespace DevGames.Editor
 
             instance.name = name;
             instance.transform.SetParent(parent, false);
+            var sourceRotation = instance.transform.localRotation;
             instance.transform.localPosition = Vector3.zero;
-            instance.transform.localRotation = rotation;
+            instance.transform.localRotation = rotation * sourceRotation;
             instance.transform.localScale = new Vector3(
                 Mathf.Abs(instance.transform.localScale.x),
                 Mathf.Abs(instance.transform.localScale.y),

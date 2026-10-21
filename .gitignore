@@ -22,3 +22,10 @@
 .idea/
 .gitnexus/
 
+
+# Ferramentas locais (IA, indexadores, Unity Version Control)
+.claude/
+CLAUDE.md
+AGENTS.md
+.gitnexusignore
+.collabignore
