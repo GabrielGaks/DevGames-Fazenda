@@ -21,6 +21,7 @@ namespace DevGames.Editor
     {
         const string Root = "Assets/_Game";
         const string MaterialRoot = Root + "/Art/Materials";
+        const string GroundTextureRoot = Root + "/Art/Textures/Ground";
         const string LevelRoot = Root + "/Settings/Levels";
         const string SceneRoot = Root + "/Scenes";
         const string FarmBuildings = Root + "/ThirdParty/Quaternius/FarmBuildings/Models/";
@@ -34,9 +35,30 @@ namespace DevGames.Editor
         const string FarmProps = Root + "/ThirdParty/Quaternius/FarmProps/";
         const string IslandPack = Root + "/ThirdParty/Whitebird/LowPolyIsland/Models/";
         const string FoxIsle = Root + "/ThirdParty/FoxDev/FloatingIsle/Models/FloatingIsleModel.fbx";
+        const string FoxIsleRoot = Root + "/ThirdParty/FoxDev/FloatingIsle";
         const string CozyFarm = Root + "/ThirdParty/Styloo/CozyFarm/Models/";
         const string SurvivalKit = Root + "/ThirdParty/Kenney/SurvivalKit/Models/";
         const string AnimatedMenuVersion = "MENU_ANIMADO_V1";
+
+        /// <summary>Forces the Editor Play button to follow the same Bootstrap-first flow as a build.</summary>
+        [InitializeOnLoadMethod]
+        static void ConfigurePlayModeStartScene()
+        {
+            EditorApplication.delayCall += SetBootstrapAsPlayModeStartScene;
+            EditorApplication.playModeStateChanged += state =>
+            {
+                if (state == PlayModeStateChange.EnteredEditMode) SetBootstrapAsPlayModeStartScene();
+            };
+        }
+
+        /// <summary>Selects Bootstrap as the scene launched by the Editor Play button.</summary>
+        static void SetBootstrapAsPlayModeStartScene()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            var bootstrap = AssetDatabase.LoadAssetAtPath<SceneAsset>($"{SceneRoot}/Bootstrap.unity");
+            if (bootstrap != null && EditorSceneManager.playModeStartScene != bootstrap)
+                EditorSceneManager.playModeStartScene = bootstrap;
+        }
 
         static readonly Color BarnRed = new(0.48f, 0.10f, 0.07f);
         static readonly Color Wood = new(0.30f, 0.17f, 0.08f);
@@ -56,6 +78,7 @@ namespace DevGames.Editor
 
             ConfigureLayers();
             var materials = CreateMaterials();
+            CreateFoxIsleMaterials();
             var definition = CreateLevelDefinition();
             CreateBootstrapScene();
             CreateMainMenuScene(materials);
@@ -117,17 +140,17 @@ namespace DevGames.Editor
         }
 
         /// <summary>Applies the organic farm revision and emits an unmistakable confirmation.</summary>
-        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V19")]
+        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V30")]
         public static void ApplyVisualFixV6()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V19.");
+                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V30.");
                 return;
             }
 
             BuildAll();
-            Debug.Log("FAZENDA VERTICAL V19 salva em Farm.unity - abra Bootstrap e pressione Play.");
+            Debug.Log("FAZENDA VERTICAL V30 salva em Farm.unity - abra Bootstrap e pressione Play.");
         }
 
         [InitializeOnLoadMethod]
@@ -135,11 +158,17 @@ namespace DevGames.Editor
         {
             if (Application.isBatchMode) return;
             var farmScene = $"{SceneRoot}/Levels/Farm.unity";
-            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V19")) return;
-            EditorApplication.delayCall += () =>
-            {
-                if (!EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isCompiling) ApplyVisualFixV6();
-            };
+            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V30")) return;
+            EditorApplication.update -= ApplyOrganicFarmWhenReady;
+            EditorApplication.update += ApplyOrganicFarmWhenReady;
+        }
+
+        /// <summary>Waits for compilation to finish before rebuilding the generated scenes.</summary>
+        static void ApplyOrganicFarmWhenReady()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling) return;
+            EditorApplication.update -= ApplyOrganicFarmWhenReady;
+            ApplyVisualFixV6();
         }
 
         /// <summary>Disables the scene generator while Play Mode or compilation is active.</summary>
@@ -171,8 +200,59 @@ namespace DevGames.Editor
             CreateMaterial("Cream", Cream, result);
             CreateMaterial("Soil", new Color(0.34f, 0.22f, 0.12f), result);
             CreateMaterial("Metal", new Color(0.30f, 0.36f, 0.38f), result);
+            CreateMaterial("TractorRed", new Color(0.58f, 0.08f, 0.035f), result);
+            CreateMaterial("TireDark", new Color(0.035f, 0.04f, 0.045f), result);
+            CreateMaterial("SeatLeather", new Color(0.16f, 0.075f, 0.035f), result);
             CreateMaterial("Goal", new Color(1f, 0.55f, 0.12f), result, true);
+            ConfigureGroundMaterial(result["Green"], "grass_ground", new Color(0.74f, 0.86f, 0.70f), 7f);
+            ConfigureGroundMaterial(result["Soil"], "dirt", new Color(0.82f, 0.72f, 0.58f), 5f);
             return result;
+        }
+
+        /// <summary>Applies a repeating CC0 color and normal texture to a farm ground material.</summary>
+        /// <param name="material">URP material used by the generated ground meshes.</param>
+        /// <param name="textureName">Poly Haven asset prefix shared by the downloaded maps.</param>
+        /// <param name="tint">Subtle color grading that keeps the texture inside the farm palette.</param>
+        /// <param name="tiling">Number of repetitions across a Unity primitive UV tile.</param>
+        static void ConfigureGroundMaterial(Material material, string textureName, Color tint, float tiling)
+        {
+            var colorPath = $"{GroundTextureRoot}/{textureName}_diff_1k.jpg";
+            var normalPath = $"{GroundTextureRoot}/{textureName}_nor_gl_1k.jpg";
+            ConfigureGroundTextureImport(colorPath, false);
+            ConfigureGroundTextureImport(normalPath, true);
+            var colorMap = AssetDatabase.LoadAssetAtPath<Texture2D>(colorPath);
+            var normalMap = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+            if (material == null || colorMap == null) return;
+
+            material.color = tint;
+            material.SetTexture("_BaseMap", colorMap);
+            material.SetTexture("_MainTex", colorMap);
+            material.SetTextureScale("_BaseMap", Vector2.one * tiling);
+            material.SetTextureScale("_MainTex", Vector2.one * tiling);
+            material.SetFloat("_Smoothness", 0.12f);
+            if (normalMap != null)
+            {
+                material.SetTexture("_BumpMap", normalMap);
+                material.SetTextureScale("_BumpMap", Vector2.one * tiling);
+                material.SetFloat("_BumpScale", 0.65f);
+                material.EnableKeyword("_NORMALMAP");
+            }
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>Configures a ground image for seamless repetition and correct normal-map decoding.</summary>
+        /// <param name="path">Project-relative path of the texture.</param>
+        /// <param name="normalMap">True when the image contains tangent-space normals.</param>
+        static void ConfigureGroundTextureImport(string path, bool normalMap)
+        {
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) return;
+            var desiredType = normalMap ? TextureImporterType.NormalMap : TextureImporterType.Default;
+            if (importer.textureType == desiredType && importer.wrapMode == TextureWrapMode.Repeat && importer.maxTextureSize == 1024) return;
+            importer.textureType = desiredType;
+            importer.wrapMode = TextureWrapMode.Repeat;
+            importer.maxTextureSize = 1024;
+            importer.SaveAndReimport();
         }
 
         static void CreateMaterial(string name, Color color, IDictionary<string, Material> materials, bool emission = false)
@@ -191,6 +271,72 @@ namespace DevGames.Editor
                 material.SetColor("_EmissionColor", color * 1.6f);
             }
             materials[name] = material;
+        }
+
+        /// <summary>Creates URP materials from the official hand-painted Fox Dev texture set.</summary>
+        static void CreateFoxIsleMaterials()
+        {
+            if (!AssetDatabase.LoadAssetAtPath<GameObject>(FoxIsle)) return;
+            foreach (var name in new[] { "Chimney", "Decor", "Fence", "Grass", "House", "Roof", "Stairs", "Stone", "Windmill" })
+            {
+                var baseMap = LoadFoxTexture(name, "BaseMap", false);
+                var normal = LoadFoxTexture(name, "Normal", true);
+                var mask = LoadFoxTexture(name, "MaskMap", false, true);
+                if (baseMap == null) continue;
+
+                var path = $"{FoxIsleRoot}/Materials/{name}.mat";
+                var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (material == null)
+                {
+                    material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
+                    AssetDatabase.CreateAsset(material, path);
+                }
+                material.SetTexture("_BaseMap", baseMap);
+                material.SetTexture("_MainTex", baseMap);
+                if (normal != null)
+                {
+                    material.SetTexture("_BumpMap", normal);
+                    material.EnableKeyword("_NORMALMAP");
+                }
+                if (mask != null)
+                {
+                    material.SetTexture("_MetallicGlossMap", mask);
+                    material.SetTexture("_OcclusionMap", mask);
+                    material.EnableKeyword("_METALLICSPECGLOSSMAP");
+                }
+                if (name == "House")
+                {
+                    var emission = AssetDatabase.LoadAssetAtPath<Texture2D>($"{FoxIsleRoot}/Textures/FloatingIsle_House_Emissive.png");
+                    if (emission != null)
+                    {
+                        material.SetTexture("_EmissionMap", emission);
+                        material.SetColor("_EmissionColor", Color.white);
+                        material.EnableKeyword("_EMISSION");
+                    }
+                }
+                EditorUtility.SetDirty(material);
+            }
+        }
+
+        /// <summary>Loads a Fox Dev texture and configures its color-space/import type for URP.</summary>
+        /// <param name="part">Texture family, such as Grass or Stone.</param>
+        /// <param name="suffix">Map suffix used in the official package.</param>
+        /// <param name="normalMap">Whether Unity should import this image as a normal map.</param>
+        /// <param name="linear">Whether the image stores data instead of display colors.</param>
+        /// <returns>The imported texture, or null when that optional map does not exist.</returns>
+        static Texture2D LoadFoxTexture(string part, string suffix, bool normalMap, bool linear = false)
+        {
+            var path = $"{FoxIsleRoot}/Textures/FloatingIsle_{part}_{suffix}.png";
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) return null;
+            var desiredType = normalMap ? TextureImporterType.NormalMap : TextureImporterType.Default;
+            if (importer.textureType != desiredType || importer.sRGBTexture == linear)
+            {
+                importer.textureType = desiredType;
+                importer.sRGBTexture = !linear;
+                importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         }
 
         static LevelDefinition CreateLevelDefinition()
@@ -405,6 +551,8 @@ namespace DevGames.Editor
             ledge.Configure(LayerMask.GetMask("Climbable"));
             player.AddComponent<PlayerMotor>().Configure(input, null);
             player.AddComponent<PlayerRespawn>().Configure(input);
+            player.AddComponent<AudioSource>();
+            player.AddComponent<PlayerFootsteps>();
 
             var character = CreateModel(CharacterModel, "Character Visual", player.transform, Vector3.zero, Quaternion.Euler(0f, 180f, 0f), 1.75f, false);
             if (character == null)
@@ -429,6 +577,7 @@ namespace DevGames.Editor
             var playerAnimator = player.AddComponent<PlayerAnimator>();
             SetObjectReference(playerAnimator, "motor", player.GetComponent<PlayerMotor>());
             SetObjectReference(playerAnimator, "animator", animator);
+            player.AddComponent<PlayerVisualGrounding>().Configure(player.GetComponent<PlayerMotor>(), animator, character.transform);
         }
 
         static AnimatorController CreateCharacterController()
@@ -605,7 +754,7 @@ namespace DevGames.Editor
 
         static void CreateComposedCourse(Dictionary<string, Material> materials)
         {
-            new GameObject("FAZENDA_VERTICAL_V19");
+            new GameObject("FAZENDA_VERTICAL_V30");
             CreateFarmTerrain(materials);
             CreateGroundedFarmRoute();
 
@@ -771,9 +920,9 @@ namespace DevGames.Editor
             var field = FieldIsland;
             CreateBlock("Pasto", new Vector3(field.center.x, -0.6f, field.center.y), new Vector3(field.width, 1.2f, field.height), materials["Green"], "Ground")
                 .transform.SetParent(root, true);
-            // Dirt surfaces are visual only, a hair above the grass, so they never trip the player.
-            CreateVisual(PrimitiveType.Cube, "Estrada de Terra", root, new Vector3(0f, 0.01f, 4f), new Vector3(6f, 0.02f, 34f), materials["Soil"]);
-            CreateVisual(PrimitiveType.Cube, "Terreiro do Celeiro", root, new Vector3(11f, 0.01f, 22.5f), new Vector3(24f, 0.02f, 8f), materials["Soil"]);
+            // Dirt surfaces are visual-only meshes with curved borders, a hair above the grass.
+            CreateCurvedDirtPath(root, materials["Soil"]);
+            CreateRoundedGroundPatch("Terreiro do Celeiro", root, new Vector3(11f, 0.018f, 22.5f), new Vector2(25f, 9f), 3.2f, materials["Soil"]);
 
             // Fence on the rim plus a low invisible wall: walking never drops you off, a jump or a fall can.
             var corners = new[]
@@ -810,6 +959,144 @@ namespace DevGames.Editor
                 CreateUnderRock(cliff, new Vector3(field.center.x, -1.5f, field.center.y - 14f + i * 28f), 55f, i * 150f);
         }
 
+        /// <summary>Creates a gently winding farm road with smooth sides instead of a rectangular block.</summary>
+        /// <param name="parent">Farm terrain hierarchy that receives the visual road.</param>
+        /// <param name="material">Tiled dirt material used on the road surface.</param>
+        static void CreateCurvedDirtPath(Transform parent, Material material)
+        {
+            var controls = new[]
+            {
+                new Vector3(0.2f, 0.014f, -17f),
+                new Vector3(-0.3f, 0.014f, -10f),
+                new Vector3(0.35f, 0.014f, -2f),
+                new Vector3(-0.45f, 0.014f, 6f),
+                new Vector3(0.45f, 0.014f, 14f),
+                new Vector3(2.2f, 0.014f, 20f),
+                new Vector3(8f, 0.014f, 22.2f)
+            };
+            const int samplesPerSegment = 7;
+            const float width = 6.2f;
+            var centers = new List<Vector3>();
+            for (var segment = 0; segment < controls.Length - 1; segment++)
+                for (var sample = 0; sample < samplesPerSegment; sample++)
+                {
+                    var t = sample / (float)samplesPerSegment;
+                    var a = controls[Mathf.Max(0, segment - 1)];
+                    var b = controls[segment];
+                    var c = controls[segment + 1];
+                    var d = controls[Mathf.Min(controls.Length - 1, segment + 2)];
+                    centers.Add(CatmullRom(a, b, c, d, t));
+                }
+            centers.Add(controls[controls.Length - 1]);
+
+            var vertices = new Vector3[centers.Count * 2];
+            var uv = new Vector2[vertices.Length];
+            var triangles = new int[(centers.Count - 1) * 6];
+            var traveled = 0f;
+            for (var i = 0; i < centers.Count; i++)
+            {
+                if (i > 0) traveled += Vector3.Distance(centers[i - 1], centers[i]);
+                var previous = centers[Mathf.Max(0, i - 1)];
+                var next = centers[Mathf.Min(centers.Count - 1, i + 1)];
+                var side = Vector3.Cross(Vector3.up, (next - previous).normalized);
+                var edgeVariation = Mathf.Sin(i * 1.73f) * 0.22f + Mathf.Sin(i * 0.47f) * 0.14f;
+                var halfWidth = width * 0.5f + edgeVariation;
+                vertices[i * 2] = centers[i] - side * halfWidth;
+                vertices[i * 2 + 1] = centers[i] + side * halfWidth;
+                uv[i * 2] = new Vector2(0f, traveled / 36f);
+                uv[i * 2 + 1] = new Vector2(1f, traveled / 36f);
+                if (i >= centers.Count - 1) continue;
+                var index = i * 6;
+                var vertex = i * 2;
+                triangles[index] = vertex;
+                triangles[index + 1] = vertex + 2;
+                triangles[index + 2] = vertex + 1;
+                triangles[index + 3] = vertex + 1;
+                triangles[index + 4] = vertex + 2;
+                triangles[index + 5] = vertex + 3;
+            }
+            CreateGroundMesh("Estrada de Terra Curva", parent, vertices, uv, triangles, material);
+        }
+
+        /// <summary>Evaluates a smooth Catmull-Rom curve between the middle control points.</summary>
+        /// <param name="a">Control point before the segment.</param>
+        /// <param name="b">Segment start.</param>
+        /// <param name="c">Segment end.</param>
+        /// <param name="d">Control point after the segment.</param>
+        /// <param name="t">Normalized position from zero to one.</param>
+        /// <returns>A smoothly interpolated world position.</returns>
+        static Vector3 CatmullRom(Vector3 a, Vector3 b, Vector3 c, Vector3 d, float t)
+        {
+            var t2 = t * t;
+            var t3 = t2 * t;
+            return 0.5f * ((2f * b) + (-a + c) * t + (2f * a - 5f * b + 4f * c - d) * t2 + (-a + 3f * b - 3f * c + d) * t3);
+        }
+
+        /// <summary>Creates a flat rectangular dirt area with circular, subdivided corners.</summary>
+        /// <param name="name">Readable hierarchy name.</param>
+        /// <param name="parent">Terrain hierarchy receiving the patch.</param>
+        /// <param name="center">World center slightly above the grass.</param>
+        /// <param name="size">Width and depth of the patch.</param>
+        /// <param name="radius">Corner radius, clamped to half the smallest dimension.</param>
+        /// <param name="material">Tiled dirt material.</param>
+        static void CreateRoundedGroundPatch(string name, Transform parent, Vector3 center, Vector2 size, float radius, Material material)
+        {
+            const int cornerSegments = 7;
+            radius = Mathf.Min(radius, Mathf.Min(size.x, size.y) * 0.5f);
+            var perimeter = new List<Vector3>();
+            var cornerCenters = new[]
+            {
+                new Vector2(size.x * 0.5f - radius, size.y * 0.5f - radius),
+                new Vector2(-size.x * 0.5f + radius, size.y * 0.5f - radius),
+                new Vector2(-size.x * 0.5f + radius, -size.y * 0.5f + radius),
+                new Vector2(size.x * 0.5f - radius, -size.y * 0.5f + radius)
+            };
+            for (var corner = 0; corner < 4; corner++)
+                for (var step = 0; step <= cornerSegments; step++)
+                {
+                    var angle = (corner * 90f + step * 90f / cornerSegments) * Mathf.Deg2Rad;
+                    var point = cornerCenters[corner] + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                    perimeter.Add(center + new Vector3(point.x, 0f, point.y));
+                }
+
+            var vertices = new Vector3[perimeter.Count + 1];
+            var uv = new Vector2[vertices.Length];
+            var triangles = new int[perimeter.Count * 3];
+            vertices[0] = center;
+            uv[0] = new Vector2(0.5f, 0.5f);
+            for (var i = 0; i < perimeter.Count; i++)
+            {
+                vertices[i + 1] = perimeter[i];
+                uv[i + 1] = new Vector2((perimeter[i].x - center.x) / size.x + 0.5f, (perimeter[i].z - center.z) / size.y + 0.5f);
+                triangles[i * 3] = 0;
+                // Clockwise order in the X/Z plane makes the surface normal point upward.
+                triangles[i * 3 + 1] = (i + 1) % perimeter.Count + 1;
+                triangles[i * 3 + 2] = i + 1;
+            }
+            CreateGroundMesh(name, parent, vertices, uv, triangles, material);
+        }
+
+        /// <summary>Creates a visual-only mesh from prepared vertices, UVs and triangle indices.</summary>
+        /// <param name="name">Name shown in the scene hierarchy.</param>
+        /// <param name="parent">Parent transform for organization.</param>
+        /// <param name="vertices">World-space surface vertices.</param>
+        /// <param name="uv">Texture coordinates corresponding to every vertex.</param>
+        /// <param name="triangles">Triangle index buffer.</param>
+        /// <param name="material">Material rendered on the mesh.</param>
+        static void CreateGroundMesh(string name, Transform parent, Vector3[] vertices, Vector2[] uv, int[] triangles, Material material)
+        {
+            var go = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+            go.transform.SetParent(parent, true);
+            var mesh = new Mesh { name = name + " Mesh" };
+            mesh.vertices = vertices;
+            mesh.uv = uv;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            go.GetComponent<MeshFilter>().sharedMesh = mesh;
+            go.GetComponent<MeshRenderer>().sharedMaterial = material;
+        }
+
         /// <summary>Hangs a rock under the island with its top at <paramref name="top"/>; visual only.</summary>
         static void CreateUnderRock(Transform parent, Vector3 top, float size, float yaw)
         {
@@ -842,7 +1129,31 @@ namespace DevGames.Editor
                     if (!keep.Contains(part.name)) Object.DestroyImmediate(part.gameObject);
             foreach (var child in isle.GetComponentsInChildren<Transform>(true))
                 GameObjectUtility.SetStaticEditorFlags(child.gameObject, StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic);
+            ApplyFoxIsleMaterials(isle);
             return isle;
+        }
+
+        /// <summary>Matches each separable island mesh to its restored hand-painted material.</summary>
+        /// <param name="isle">Instantiated Fox Dev model containing the island pieces.</param>
+        static void ApplyFoxIsleMaterials(GameObject isle)
+        {
+            foreach (var renderer in isle.GetComponentsInChildren<Renderer>(true))
+            {
+                var label = (renderer.gameObject.name + " " + renderer.sharedMaterial?.name).ToLowerInvariant();
+                var materialName = label.Contains("rocky") || label.Contains("stone") ? "Stone" :
+                    label.Contains("geo") || label.Contains("grass") ? "Grass" :
+                    label.Contains("chimney") ? "Chimney" :
+                    label.Contains("fence") ? "Fence" :
+                    label.Contains("roof") ? "Roof" :
+                    label.Contains("stair") ? "Stairs" :
+                    label.Contains("wind") ? "Windmill" :
+                    label.Contains("house") ? "House" : "Decor";
+                var material = AssetDatabase.LoadAssetAtPath<Material>($"{FoxIsleRoot}/Materials/{materialName}.mat");
+                if (material == null) continue;
+                var slots = renderer.sharedMaterials;
+                for (var i = 0; i < slots.Length; i++) slots[i] = material;
+                renderer.sharedMaterials = slots;
+            }
         }
 
         static Vector3 OnGround(float x, float z) => new(x, 0f, z);
@@ -970,7 +1281,7 @@ namespace DevGames.Editor
             CreateSilo(new Vector3(SiloCenter.x, SiloBase, SiloCenter.y), materials);
             CreateWindmill(new Vector3(MillCenter.x, MillBase, MillCenter.y), materials);
 
-            CreateGroundFarm();
+            CreateGroundFarm(materials);
         }
 
         static void CreateBarn(Vector3 groundPosition, Dictionary<string, Material> materials)
@@ -1046,11 +1357,12 @@ namespace DevGames.Editor
         /// The starting island, laid out in readable zones: entrance, vegetable field on the left,
         /// animal pen on the right and storage beside the barn.
         /// </summary>
-        static void CreateGroundFarm()
+        static void CreateGroundFarm(IReadOnlyDictionary<string, Material> materials)
         {
             var entrance = new GameObject("Zona - Entrada").transform;
             CreateModel(FarmBuildings + "OpenBarn.fbx", "Galpao de Maquinas", entrance, OnGround(-19f, -7f), Quaternion.Euler(0f, 90f, 0f), 6.5f, true);
-            CreateModel(TractorModel, "Trator", entrance, OnGround(16f, -7f), Quaternion.Euler(0f, -25f, 0f), 2.7f, true);
+            var tractor = CreateModel(TractorModel, "Trator", entrance, OnGround(16f, -7f), Quaternion.Euler(0f, -25f, 0f), 2.7f, true);
+            ApplyTractorMaterials(tractor, materials);
             CreateModel(FarmProps + "Cart.fbx", "Carroca", entrance, OnGround(-12f, -3f), Quaternion.Euler(0f, 30f, 0f), 1.6f, true);
             CreateModel(FarmBuildings + "ChickenCoop.fbx", "Galinheiro", entrance, OnGround(-20f, 15f), Quaternion.Euler(0f, 90f, 0f), 3.2f, true);
             CreateModel(FarmBuildings + "Well.fbx", "Poco", entrance, OnGround(17.5f, 11.5f), Quaternion.identity, 2.8f, true);
@@ -1075,6 +1387,32 @@ namespace DevGames.Editor
             CreateFarmDetails(new GameObject("Zona - Detalhes").transform);
             CreateFarmProps(new GameObject("Zona - Objetos da Fazenda").transform);
             CreateNature(new GameObject("Zona - Natureza").transform);
+        }
+
+        /// <summary>Colors the tractor parts because its source FBX does not include usable material assets.</summary>
+        /// <param name="tractor">Instantiated tractor whose child renderers will receive farm materials.</param>
+        /// <param name="materials">Project materials indexed by their descriptive names.</param>
+        static void ApplyTractorMaterials(GameObject tractor, IReadOnlyDictionary<string, Material> materials)
+        {
+            if (tractor == null) return;
+
+            foreach (var renderer in tractor.GetComponentsInChildren<Renderer>(true))
+            {
+                var partName = renderer.gameObject.name.ToLowerInvariant();
+                var selected = materials["TractorRed"];
+
+                if (partName.Contains("tyre") || partName.Contains("tire"))
+                    selected = materials["TireDark"];
+                else if (partName.Contains("seat"))
+                    selected = materials["SeatLeather"];
+                else if (partName.Contains("wheel") || partName.Contains("hub") || partName.Contains("axle") ||
+                         partName.Contains("exhaust") || partName.Contains("hitch"))
+                    selected = materials["Metal"];
+
+                var assigned = renderer.sharedMaterials;
+                for (var i = 0; i < assigned.Length; i++) assigned[i] = selected;
+                renderer.sharedMaterials = assigned;
+            }
         }
 
         // Ultimate Crops: "_4" models are the grown plants; "_Crop" models are the harvested produce.
@@ -1454,7 +1792,17 @@ namespace DevGames.Editor
         {
             var canvas = CreateCanvas("Gameplay Canvas");
             var timer = CreateText(canvas.transform, "Timer", "00:00.00", 30, new Vector2(0.08f, 0.92f), new Vector2(230f, 55f), TextAnchor.MiddleLeft, Color.white);
-            var prompt = CreateText(canvas.transform, "Prompt", string.Empty, 24, new Vector2(0.5f, 0.16f), new Vector2(760f, 80f), TextAnchor.MiddleCenter, Color.white);
+            var promptBackground = new GameObject("Prompt Background", typeof(RectTransform), typeof(Image));
+            promptBackground.transform.SetParent(canvas.transform, false);
+            var promptBackgroundRect = (RectTransform)promptBackground.transform;
+            promptBackgroundRect.anchorMin = promptBackgroundRect.anchorMax = new Vector2(0.5f, 0.16f);
+            promptBackgroundRect.sizeDelta = new Vector2(850f, 86f);
+            promptBackground.GetComponent<Image>().color = new Color(0.025f, 0.02f, 0.015f, 0.78f);
+            var prompt = CreateText(promptBackground.transform, "Prompt", string.Empty, 28, new Vector2(0.5f, 0.5f), new Vector2(810f, 70f), TextAnchor.MiddleCenter, Color.white);
+            prompt.fontStyle = FontStyle.Bold;
+            var promptOutline = prompt.gameObject.AddComponent<Outline>();
+            promptOutline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+            promptOutline.effectDistance = new Vector2(1f, -1f);
             var hud = canvas.gameObject.AddComponent<GameplayHUD>();
             hud.Configure(timer, prompt);
 
@@ -1560,9 +1908,10 @@ namespace DevGames.Editor
             var go = new GameObject(name, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             var canvas = go.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.pixelPerfect = true;
             var scaler = go.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.referenceResolution = new Vector2(1280f, 720f);
             scaler.matchWidthOrHeight = 0.5f;
             var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
             eventSystem.transform.SetParent(go.transform);
@@ -1581,6 +1930,7 @@ namespace DevGames.Editor
             text.text = value;
             text.fontSize = size;
             text.alignment = alignment;
+            text.alignByGeometry = true;
             text.color = color;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
