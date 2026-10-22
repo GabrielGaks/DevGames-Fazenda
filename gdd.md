@@ -14,6 +14,8 @@ Página 1
 
 O menino loiro de cabelo castanho que está em uma aventura para recuperar os dedos da mão direito do pai que perdeu depois de uma noite chuvosa 
 
+Título curto exibido no jogo: **O Menino Loiro e os Dedos Perdidos**. 
+
 ### **1.2. Conceito resumido** 
 
 Jogo de aventura e parkour em 3D no qual o jogador controla um garoto que precisa atravessar cinco grandes percursos progressivamente mais difíceis para recuperar os cinco dedos perdidos da mão direita de seu pai. 
@@ -72,7 +74,7 @@ Ao selecionar uma fase, o personagem aparece no ponto inicial. No mesmo instante
 
 O jogador deverá utilizar movimentação, corrida, visão, saltos e escalada para avançar pelo percurso. Caso erre algum salto, ele cairá naturalmente pelo cenário. Não existe Game Over. 
 
-O jogador pode continuar de onde conseguir cair ou pressionar R para retornar imediatamente ao início da fase. Pressionar R não reinicia o cronômetro. 
+O jogador pode continuar de onde conseguir cair ou pressionar R para retornar imediatamente ao início da fase. Pressionar R não reinicia o cronômetro. Se cair para fora do mapa (abaixo das ilhas), o jogador também volta automaticamente ao início, sem zerar o cronômetro. 
 
 O cronômetro termina somente quando o jogador conclui a fase ou sai dela. 
 
@@ -366,6 +368,8 @@ A física deverá ser previsível o suficiente para que o jogador consiga aprend
 
 - R: retornar imediatamente ao ponto inicial da fase; 
 
+- S (pendurado em uma borda): soltar a borda; 
+
 - Esc: pausar. 
 
 O uso da tecla R não reinicia o cronômetro. 
@@ -394,7 +398,7 @@ Se o jogador pressionar Espaço nessa situação, o personagem realiza uma açã
 
 Fluxo: Pular → Não alcançar completamente → Encostar na borda → Pressionar Espaço → Escalar → Continuar. 
 
-Caso o jogador não consiga alcançar uma borda válida ou não realize a ação necessária, continuará caindo. 
+Caso o jogador não consiga alcançar uma borda válida ou não realize a ação necessária, continuará caindo. Enquanto estiver pendurado, pressionar S solta a borda. 
 
 Página 8 
 
@@ -430,15 +434,19 @@ O jogo não possui sistema econômico. Não existem dinheiro, loja, itens compr�
 
 #### **4.2.7. Fluxo de telas** 
 
-Menu Principal → Jogar / Seleção de Fases / Opções / Sair. 
+Menu Principal → Começar a Aventura (abre a Seleção de Fases) / Sair. 
 
 Seleção de Fases → Fazenda / Cidade / Montanhas / Espaço / Dimensão Psicodélica. As fases ainda não liberadas aparecem bloqueadas. 
 
 Durante a fase → HUD / Menu de pausa / Reiniciar / Voltar ao menu. 
 
-Conclusão → Tempo final / Dedo recuperado / Próxima fase / Jogar novamente. 
+Conclusão → Tempo final / Dedo recuperado / Jogar novamente / Seleção de Fases. 
+
+*Próximas fases de desenvolvimento:* botão **Opções** no menu principal e botão **Próxima fase** na tela de conclusão (quando a fase 2 existir). 
 
 ### **4.3. Opções do jogo** 
+
+*Previsto para as próximas fases de desenvolvimento.* Na versão atual, os volumes e a sensibilidade do mouse são valores fixos já equilibrados no jogo. 
 
 - Volume geral; 
 
@@ -468,6 +476,8 @@ Serão colocados pequenos elementos escondidos nos mapas. Eles não interferem n
 
 Podem existir referências a outros jogos, à disciplina, ao desenvolvimento do próprio projeto, a piadas internas e à história absurda do jogo. 
 
+*Previsto para as próximas fases de desenvolvimento.* 
+
 ## **5. Níveis** 
 
 ### **5.1. Nível 1 - Fazenda** 
@@ -480,9 +490,13 @@ Dificuldade: baixa a moderada.
 
 Duração esperada: aproximadamente 5 minutos em uma primeira execução normal. 
 
-O jogador inicia no chão de uma fazenda. Os primeiros saltos são simples. A progressão utiliza estruturas como fardos de feno, cercas, caixas, tratores, telhados, celeiros, silos e moinhos. 
+Nome no mapa: **Fazenda Suspensa**. O jogador inicia no chão de uma fazenda, numa ilha base com celeiros, plantações, cercas, trator, poço, animais e moinho. Os primeiros saltos são simples: uma escada de props sobe pela lateral do celeiro até o telhado. 
 
-Conforme sobe, os saltos se tornam mais longos e as plataformas mais estreitas. 
+A partir do celeiro, o percurso segue no estilo *Only Up*, acima das nuvens, por estações em ilhas flutuantes ligadas por saltos entre props (fardos de feno, caixas, barris e outros objetos da fazenda): 
+
+Celeiro → Silo → Moinho → Ponte até a Casa (onde está o dedo). 
+
+Em cada estação há um farol laranja que orienta o jogador. Conforme sobe, os saltos se tornam mais longos e as plataformas mais estreitas, e uma queda pode levar o jogador de volta a uma ilha anterior ou ao chão. 
 
 Ambientação física (fora da rota, sem alterar a jogabilidade): ao lado do galpão de máquinas, alguns objetos soltos (caixas, fenos e barris) caem girando no início da fase e formam uma pilha que pode ser empurrada; o trator solta fumaça e o balde do poço sobe e desce. 
 
@@ -618,7 +632,7 @@ Aberto com Esc.
 
 - Opção de jogar novamente; 
 
-- Opção de avançar. 
+- Opção de voltar à seleção de fases (o botão "Próxima fase" entra quando a fase 2 existir). 
 
 #### **Tela de seleção de fases** 
 
@@ -636,6 +650,7 @@ Cada fase já concluída poderá apresentar seu melhor tempo. Fases ainda não l
 |Shift|Correr|
 |Espaço|Pular|
 |Espaço próximo de borda válida|Escalar|
+|S (pendurado)|Soltar a borda|
 |R|Voltar ao início da fase|
 |Esc|Pausar|
 
@@ -656,6 +671,10 @@ Cada fase possuirá ambientação sonora relacionada ao cenário.
 - Psicodélica: áudio distorcido, sons incomuns e música ambiente surreal. 
 
 Também existirão efeitos para pulos, quedas, passos, objetos, coleta de dedo e interface. 
+
+**Implementado no Nível 1:** música de fundo em loop ("Apple Cider"), passos na terra, impulso do pulo, pouso leve e pouso forte, vento durante quedas longas e som de esforço ao subir uma borda. 
+
+*Próximas fases de desenvolvimento:* ambiente sonoro da fazenda (animais e vento), som de coleta do dedo e sons de interface. 
 
 Página 12 
 
@@ -697,6 +716,8 @@ NPCs poderão ser utilizados principalmente para ambientação.
 
 Eles não precisarão participar diretamente da narrativa principal. 
 
+**Implementado no Nível 1:** animais que caminham pela fazenda e pássaros voando. *O fazendeiro e os demais NPCs ficam para as próximas fases de desenvolvimento.* 
+
 ### **7.3. IA de suporte** 
 
 - NavMesh para NPCs; 
@@ -708,6 +729,8 @@ Eles não precisarão participar diretamente da narrativa principal.
 - Detecção de colisão; 
 
 - Movimentação automática. 
+
+Na versão atual, a movimentação dos animais é feita por script, sem NavMesh. O uso de NavMesh está previsto para as próximas fases, junto com os NPCs. 
 
 ## **8. Técnico** 
 
@@ -907,9 +930,26 @@ Mapa de cada conteúdo dos tutoriais para o ponto do projeto onde ele aparece.
 | Spawn de objetos por função | Função dedicada que instancia o objeto | `SkillChallengeSpawner.Spawn` (Instantiate) |
 | Partículas (pedrinhas) | Terra/pedrinhas soltas a cada passo | `PlayerFootsteps.PlayStep` |
 | Fumaça | Fumaça contínua saindo do trator | `FarmProjectBuilder.CreateSmoke` (ParticleSystem na cena) |
-| Som | Passos na terra | `PlayerFootsteps` |
+| Som | Música da fase; passos na terra; pulo, pouso, vento da queda e subida da borda | `FarmProjectBuilder.CreateMusic`, `PlayerFootsteps`, `PlayerAudio` |
 | Animação (parado, andando, correndo, pulando, caindo) | Blend de locomoção + pulo/queda/aterrissagem + pendurar/subir | `FarmCharacter.controller`, `PlayerAnimator` |
 | Scripts | Todos em `Assets/_Game/Scripts`, documentados função a função | — |
 | UI: texto e botão | Cronômetro, dicas, menus; botão **Reiniciar fase** no pause e **Jogar novamente** no fim | `GameplayHUD`, `PauseMenu.RestartLevel`, `CompletionPanel.Replay` |
 | Tag | `Player` (gatilhos) e `Empurravel` (objetos soltos) | `CompareTag` em `PlayerPusher`, `FingerCollectible`, `TutorialTrigger` |
 | Nível 1 com 70+ assets | Fazenda com mais de 1000 instâncias de modelos de categorias variadas (construções, animais, plantações, props, natureza, ilhas) | Cena `Farm.unity` |
+
+## **17. Próximas Fases de Desenvolvimento**
+
+A versão atual entrega o Nível 1 (Fazenda) completo e jogável, com menus, cronômetro, recordes, progressão e o tema Skills. Os itens abaixo já estão definidos neste documento e entram nas próximas fases de desenvolvimento.
+
+| Item | Seção do GDD | Situação atual |
+|---|---|---|
+| Fases 2 a 5 (Cidade, Montanhas, Espaço, Dimensão Psicodélica) | 3.2.2, 5.2 a 5.5 | Aparecem bloqueadas na seleção de fases |
+| Cutscene final com o pai e a revelação da irmã | 3.1, 15 | Não implementada |
+| Botão **Opções** no menu principal | 4.2.7 | O menu tem "Começar a Aventura" e "Sair" |
+| Tela de opções (volume geral, música e efeitos; sensibilidade do mouse; resolução; tela cheia) | 4.3 | Valores fixos, já equilibrados |
+| Botão **Próxima fase** na tela de conclusão | 4.2.7, 6.1 | Leva à seleção de fases |
+| Ambiente sonoro da fazenda (animais e vento) | 6.3 | Música de fundo e sons do personagem já existem |
+| Som de coleta do dedo e sons de interface | 6.3 | Não implementados |
+| Easter eggs e referências escondidas | 4.5 | Não implementados |
+| NPCs (fazendeiro, moradores) com NavMesh | 7.2, 7.3 | Animais e pássaros com movimento por script |
+| Mecânicas de surpresa das fases avançadas (gravidade alterada, portais, plataformas giratórias) | Lente #2, 5.4, 5.5 | Previstas para as fases 4 e 5 |

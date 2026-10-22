@@ -20,6 +20,13 @@ namespace DevGames.Tests
                     Assert.That(field.Contains(new Vector2(point.x, point.z)), $"{name}: {point} fora do campo");
         }
 
+        [TestCase("Assets/_Game/ThirdParty/Kenney/RPGAudio/cloth1.ogg")]
+        [TestCase("Assets/_Game/ThirdParty/Kenney/ImpactSounds/impactSoft_medium_000.ogg")]
+        [TestCase("Assets/_Game/ThirdParty/Kenney/ImpactSounds/impactSoft_heavy_000.ogg")]
+        [TestCase("Assets/_Game/ThirdParty/ZaneLittle/AppleCider/apple_cider.ogg")]
+        public void PlayerSoundsAndMusic_ExistInProject(string path) =>
+            Assert.That(UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(path), Is.Not.Null, path);
+
         [Test]
         public void RouteModels_AllExistInProject()
         {

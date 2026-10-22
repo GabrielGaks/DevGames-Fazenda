@@ -25,7 +25,7 @@ namespace DevGames.Player
             audioSource = GetComponent<AudioSource>();
             audioSource.playOnAwake = false;
             audioSource.spatialBlend = 0.7f;
-            audioSource.volume = 0.55f;
+            audioSource.volume = 0.45f;
             dirtStep = CreateDirtStepClip();
             dirtParticles = CreateDirtParticles();
         }

@@ -29,6 +29,29 @@ namespace DevGames.Editor
         const string Crops = Root + "/ThirdParty/Quaternius/UltimateCrops/Models/";
         const string Animals = Root + "/ThirdParty/Quaternius/FarmAnimals/Models/";
         const string Mixamo = Root + "/ThirdParty/Mixamo/";
+        const string Kenney = Root + "/ThirdParty/Kenney/";
+        const string Music = Root + "/ThirdParty/ZaneLittle/AppleCider/apple_cider.ogg";
+
+        /// <summary>Every clip in the folder whose name starts with the prefix (the pack's numbered variations).</summary>
+        static AudioClip[] Sounds(string folder, string prefix) =>
+            AssetDatabase.FindAssets("t:AudioClip", new[] { folder.TrimEnd('/') })
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => System.IO.Path.GetFileName(path).StartsWith(prefix))
+                .Select(AssetDatabase.LoadAssetAtPath<AudioClip>)
+                .ToArray();
+
+        /// <summary>Background music of the level: one 2D source looping "Apple Cider" quietly under the effects.</summary>
+        static void CreateMusic()
+        {
+            var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(Music);
+            if (clip == null) return;
+            var music = new GameObject("Musica").AddComponent<AudioSource>();
+            music.clip = clip;
+            music.loop = true;
+            music.playOnAwake = true;
+            music.volume = 0.18f;
+            music.spatialBlend = 0f;
+        }
         const string CharacterModel = Mixamo + "Character.fbx";
         const string CharacterAnimations = Root + "/ThirdParty/Quaternius/UniversalAnimations/UAL1_Standard.fbx";
         const string TractorModel = Root + "/ThirdParty/Innerscene/Tractor/Tractor.fbx";
@@ -166,18 +189,23 @@ namespace DevGames.Editor
         }
 
         /// <summary>Applies the organic farm revision and emits an unmistakable confirmation.</summary>
-        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V49")]
+        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V50")]
         public static void ApplyVisualFixV6()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V49.");
+                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V50.");
                 return;
             }
 
             BuildAll();
-            Debug.Log("FAZENDA VERTICAL V49 salva em Farm.unity - abra Bootstrap e pressione Play.");
+            Debug.Log("FAZENDA VERTICAL V50 salva em Farm.unity - abra Bootstrap e pressione Play.");
         }
+
+        // The marker also carries the editor version: scenes saved by another Unity (6.5 at home, 6000.0.8f1 in
+        // lab 12) are rebuilt once in the editor that opens them, so they are always in its native format.
+        const string SceneMarkerBase = "FAZENDA_VERTICAL_V50";
+        static string SceneMarker => $"{SceneMarkerBase}@{Application.unityVersion}";
 
         /// <summary>Ao abrir o editor, regenera o projeto se a cena Farm não tiver o marcador da versão atual.</summary>
         /// <remarks>Registra ApplyOrganicFarmWhenReady para rodar quando a compilação terminar.</remarks>
@@ -186,7 +214,7 @@ namespace DevGames.Editor
         {
             if (Application.isBatchMode) return;
             var farmScene = $"{SceneRoot}/Levels/Farm.unity";
-            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V49")) return;
+            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains(SceneMarker)) return;
             EditorApplication.update -= ApplyOrganicFarmWhenReady;
             EditorApplication.update += ApplyOrganicFarmWhenReady;
         }
@@ -715,6 +743,7 @@ namespace DevGames.Editor
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             CreateSky(CreateSun());
+            CreateMusic();
 
             var session = new GameObject("Level Session").AddComponent<LevelSession>();
             session.Configure(definition);
@@ -764,6 +793,10 @@ namespace DevGames.Editor
             player.AddComponent<PlayerRespawn>().Configure(input);
             player.AddComponent<AudioSource>();
             player.AddComponent<PlayerFootsteps>();
+            player.AddComponent<PlayerAudio>().Configure(
+                Sounds(Kenney + "RPGAudio/", "cloth"),
+                Sounds(Kenney + "ImpactSounds/", "impactSoft_medium"),
+                Sounds(Kenney + "ImpactSounds/", "impactSoft_heavy"));
             player.AddComponent<PlayerPusher>();
 
             // The Mixamo character already faces +Z, the player's forward (checked on a rendered contact sheet).
@@ -1146,7 +1179,7 @@ namespace DevGames.Editor
         /// <remarks>Valida a rota (saltos alcançáveis), cria um prop ou animal em cada ponto e as ilhas/estações nos extremos de cada ponte.</remarks>
         static void CreateComposedCourse(Dictionary<string, Material> materials)
         {
-            new GameObject("FAZENDA_VERTICAL_V49");
+            new GameObject(SceneMarker);
             CreateFarmTerrain(materials);
             CreateGroundedFarmRoute();
 

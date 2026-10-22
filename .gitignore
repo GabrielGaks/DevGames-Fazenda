@@ -33,3 +33,6 @@ AGENTS.md
 # Floating Isle (Fox Dev): licença proíbe redistribuir — baixar em https://foxdevart.itch.io/floating-isle
 
 # 3D Low Poly Island (whitebird): página só fala em uso comercial, sem permitir redistribuição — baixar em https://whitebird.itch.io/3d-low-poly-island-
+
+# Each Unity editor (6.5 at home, 6000.0.8f1 in lab 12) resolves its own built-in package versions
+Packages/packages-lock.json

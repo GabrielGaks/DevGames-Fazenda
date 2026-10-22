@@ -110,6 +110,16 @@ namespace DevGames.Editor
         /// Mixamo textures were pulled out of the character FBX (Unity left them embedded and the model
         /// came out white): normal maps flagged as such, and 4K capped at 2K for a third-person camera.
         /// </summary>
+        void OnPreprocessAudio()
+        {
+            // The 3-minute music track streams from disk instead of being decompressed whole into memory.
+            if (!assetPath.StartsWith(ThirdPartyRoot + "ZaneLittle/")) return;
+            var importer = (AudioImporter)assetImporter;
+            var settings = importer.defaultSampleSettings;
+            settings.loadType = AudioClipLoadType.Streaming;
+            importer.defaultSampleSettings = settings;
+        }
+
         void OnPreprocessTexture()
         {
             if (!assetPath.StartsWith(ThirdPartyRoot + "Mixamo/")) return;
