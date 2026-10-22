@@ -28,10 +28,11 @@ namespace DevGames.Editor
         const string Nature = Root + "/ThirdParty/Quaternius/StylizedNature/Models/";
         const string Crops = Root + "/ThirdParty/Quaternius/UltimateCrops/Models/";
         const string Animals = Root + "/ThirdParty/Quaternius/FarmAnimals/Models/";
-        const string CharacterModel = Root + "/ThirdParty/Quaternius/UniversalCharacter/Models/MaleCharacter.fbx";
+        const string Mixamo = Root + "/ThirdParty/Mixamo/";
+        const string CharacterModel = Mixamo + "Character.fbx";
         const string CharacterAnimations = Root + "/ThirdParty/Quaternius/UniversalAnimations/UAL1_Standard.fbx";
         const string TractorModel = Root + "/ThirdParty/Innerscene/Tractor/Tractor.fbx";
-        const string BirdModel = Root + "/ThirdParty/Quaternius/Bird/Ernest.fbx";
+        const string BirdModel = Root + "/ThirdParty/Sherkiz/Hawk/Hawk.fbx";
         const string FarmProps = Root + "/ThirdParty/Quaternius/FarmProps/";
         const string IslandPack = Root + "/ThirdParty/Whitebird/LowPolyIsland/Models/";
         const string FoxIsle = Root + "/ThirdParty/FoxDev/FloatingIsle/Models/FloatingIsleModel.fbx";
@@ -39,6 +40,7 @@ namespace DevGames.Editor
         const string CozyFarm = Root + "/ThirdParty/Styloo/CozyFarm/Models/";
         const string SurvivalKit = Root + "/ThirdParty/Kenney/SurvivalKit/Models/";
         const string AnimatedMenuVersion = "MENU_ANIMADO_V1";
+        const string LoosePropPrefabRoot = Root + "/Prefabs/Decoracao";
 
         /// <summary>Forces the Editor Play button to follow the same Bootstrap-first flow as a build.</summary>
         [InitializeOnLoadMethod]
@@ -55,6 +57,8 @@ namespace DevGames.Editor
         static void SetBootstrapAsPlayModeStartScene()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            // Keep the game ticking without first clicking the Game view.
+            if (!PlayerSettings.runInBackground) PlayerSettings.runInBackground = true;
             var bootstrap = AssetDatabase.LoadAssetAtPath<SceneAsset>($"{SceneRoot}/Bootstrap.unity");
             if (bootstrap != null && EditorSceneManager.playModeStartScene != bootstrap)
                 EditorSceneManager.playModeStartScene = bootstrap;
@@ -67,6 +71,8 @@ namespace DevGames.Editor
         static readonly Color Roof = new(0.12f, 0.15f, 0.17f);
         static readonly Color Cream = new(0.86f, 0.80f, 0.65f);
 
+        /// <summary>Menu DevGames > Build Farm Project: gera o projeto inteiro (materiais, cenas e build settings).</summary>
+        /// <remarks>Bloqueia em Play Mode; configura layers/tags, cria materiais, as cenas Bootstrap, MainMenu, LevelSelect e Farm, registra as cenas no build e salva.</remarks>
         [MenuItem("DevGames/Build Farm Project")]
         public static void BuildAll()
         {
@@ -81,8 +87,8 @@ namespace DevGames.Editor
             CreateFoxIsleMaterials();
             var definition = CreateLevelDefinition();
             CreateBootstrapScene();
-            CreateMainMenuScene(materials);
-            CreateLevelSelectScene(materials);
+            AnimatedMainMenuBuilder.Rebuild();
+            CreateLevelSelectScene();
             CreateFarmScene(materials, definition);
             ConfigureBuildSettings();
             AssetDatabase.SaveAssets();
@@ -90,6 +96,8 @@ namespace DevGames.Editor
             Debug.Log("DevGames Fazenda construída com sucesso.");
         }
 
+        /// <summary>Menu DevGames > Rebuild Animated Main Menu: regenera só a cena do menu principal.</summary>
+        /// <remarks>Confere se os materiais existem e delega ao AnimatedMainMenuBuilder.</remarks>
         [MenuItem("DevGames/Rebuild Animated Main Menu")]
         public static void RebuildAnimatedMainMenu()
         {
@@ -111,12 +119,30 @@ namespace DevGames.Editor
                 materials[name] = material;
             }
 
-            CreateMainMenuScene(materials);
+            AnimatedMainMenuBuilder.Rebuild();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("MENU ANIMADO V1 salvo em MainMenu.unity.");
         }
 
+        /// <summary>Menu DevGames > Rebuild Island Select: regenera só a cena de seleção de fases.</summary>
+        [MenuItem("DevGames/Rebuild Island Select")]
+        public static void RebuildIslandSelect()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogError("Pare o Play Mode antes de reconstruir a seleção de ilhas.");
+                return;
+            }
+
+            CreateLevelSelectScene();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log("Seleção de ilhas salva em LevelSelect.unity.");
+        }
+
+        /// <summary>Ao abrir o editor, reconstrói o menu se a cena ainda não tiver a versão animada.</summary>
+        /// <remarks>Procura o marcador de versão no arquivo da cena; se faltar, agenda a reconstrução e reabre a cena que estava aberta.</remarks>
         [InitializeOnLoadMethod]
         static void ApplyAnimatedMenuOnce()
         {
@@ -140,33 +166,35 @@ namespace DevGames.Editor
         }
 
         /// <summary>Applies the organic farm revision and emits an unmistakable confirmation.</summary>
-        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V30")]
+        [MenuItem("DevGames/APLICAR FAZENDA VERTICAL V49")]
         public static void ApplyVisualFixV6()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V30.");
+                Debug.LogError("Pare o Play Mode antes de aplicar a FAZENDA VERTICAL V49.");
                 return;
             }
 
             BuildAll();
-            Debug.Log("FAZENDA VERTICAL V30 salva em Farm.unity - abra Bootstrap e pressione Play.");
+            Debug.Log("FAZENDA VERTICAL V49 salva em Farm.unity - abra Bootstrap e pressione Play.");
         }
 
+        /// <summary>Ao abrir o editor, regenera o projeto se a cena Farm não tiver o marcador da versão atual.</summary>
+        /// <remarks>Registra ApplyOrganicFarmWhenReady para rodar quando a compilação terminar.</remarks>
         [InitializeOnLoadMethod]
         static void ApplyOrganicFarmOnce()
         {
             if (Application.isBatchMode) return;
             var farmScene = $"{SceneRoot}/Levels/Farm.unity";
-            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V30")) return;
+            if (System.IO.File.Exists(farmScene) && System.IO.File.ReadAllText(farmScene).Contains("FAZENDA_VERTICAL_V49")) return;
             EditorApplication.update -= ApplyOrganicFarmWhenReady;
             EditorApplication.update += ApplyOrganicFarmWhenReady;
         }
 
-        /// <summary>Waits for compilation to finish before rebuilding the generated scenes.</summary>
+        /// <summary>Waits for compilation and asset imports (new clips, reimported models) before rebuilding.</summary>
         static void ApplyOrganicFarmWhenReady()
         {
-            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling) return;
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating) return;
             EditorApplication.update -= ApplyOrganicFarmWhenReady;
             ApplyVisualFixV6();
         }
@@ -179,6 +207,8 @@ namespace DevGames.Editor
             return !EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isCompiling;
         }
 
+        /// <summary>Cria as layers (Player, Ground, Climbable...) e a tag "Empurravel" no TagManager.</summary>
+        /// <remarks>Edita ProjectSettings/TagManager.asset via SerializedObject; a tag só é adicionada se ainda não existir.</remarks>
         static void ConfigureLayers()
         {
             var tagManager = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0];
@@ -186,9 +216,17 @@ namespace DevGames.Editor
             var layers = serialized.FindProperty("layers");
             var names = new[] { "Player", "Ground", "Climbable", "MovingPlatform", "CameraBlocker", "Collectible" };
             for (var i = 0; i < names.Length; i++) layers.GetArrayElementAtIndex(8 + i).stringValue = names[i];
+            var tags = serialized.FindProperty("tags");
+            if (!Enumerable.Range(0, tags.arraySize).Any(i => tags.GetArrayElementAtIndex(i).stringValue == PlayerPusher.PushableTag))
+            {
+                tags.InsertArrayElementAtIndex(tags.arraySize);
+                tags.GetArrayElementAtIndex(tags.arraySize - 1).stringValue = PlayerPusher.PushableTag;
+            }
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        /// <summary>Cria ou atualiza os materiais URP usados pelo jogo.</summary>
+        /// <returns>Materiais indexados pelo nome (BarnRed, Wood, Green...).</returns>
         static Dictionary<string, Material> CreateMaterials()
         {
             var result = new Dictionary<string, Material>();
@@ -339,6 +377,8 @@ namespace DevGames.Editor
             return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         }
 
+        /// <summary>Cria ou atualiza o asset LevelDefinition da fase 1 (Fazenda).</summary>
+        /// <returns>O asset da fase.</returns>
         static LevelDefinition CreateLevelDefinition()
         {
             var path = $"{LevelRoot}/Farm.asset";
@@ -357,6 +397,7 @@ namespace DevGames.Editor
             return definition;
         }
 
+        /// <summary>Gera a cena Bootstrap com o BootstrapLoader.</summary>
         static void CreateBootstrapScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -364,6 +405,8 @@ namespace DevGames.Editor
             SaveScene(scene, $"{SceneRoot}/Bootstrap.unity");
         }
 
+        /// <summary>Gera a versão simples do menu principal com botões Jogar e Sair.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateMainMenuScene(Dictionary<string, Material> materials)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -388,6 +431,9 @@ namespace DevGames.Editor
             SaveScene(scene, $"{SceneRoot}/Menus/MainMenu.unity");
         }
 
+        /// <summary>Monta o cenário 3D atrás do menu (campo, celeiro, câmera).</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
+        /// <returns>A câmera do menu.</returns>
         static Camera CreateAnimatedMenuBackdrop(Dictionary<string, Material> materials)
         {
             RenderSettings.ambientLight = new Color(0.42f, 0.35f, 0.29f);
@@ -428,6 +474,8 @@ namespace DevGames.Editor
             return camera;
         }
 
+        /// <summary>Cria o Animator Controller do personagem do menu.</summary>
+        /// <returns>O controller salvo como asset.</returns>
         static AnimatorController CreateMenuCharacterController()
         {
             const string path = Root + "/Settings/MenuCharacter.controller";
@@ -442,6 +490,8 @@ namespace DevGames.Editor
             return controller;
         }
 
+        /// <summary>Adiciona gaviões voando em círculo no céu do menu.</summary>
+        /// <remarks>Cada ave recebe BirdFlight com altura, raio e velocidade diferentes.</remarks>
         static void CreateMenuBirdFlock()
         {
             var flock = new GameObject("Passaros do Menu");
@@ -455,6 +505,9 @@ namespace DevGames.Editor
             }
         }
 
+        /// <summary>Cria o painel lateral que agrupa os botões do menu.</summary>
+        /// <param name="parent">Canvas onde o painel é criado.</param>
+        /// <returns>Transform do painel.</returns>
         static Transform CreateMenuPanel(Transform parent)
         {
             var panel = new GameObject("Menu Panel", typeof(RectTransform), typeof(Image));
@@ -467,6 +520,13 @@ namespace DevGames.Editor
             return panel.transform;
         }
 
+        /// <summary>Cria um botão estilizado do menu.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="label">Texto do botão.</param>
+        /// <param name="anchor">Âncora (0-1) na tela.</param>
+        /// <param name="primary">True para o botão de destaque.</param>
+        /// <returns>O Button criado.</returns>
         static Button CreateMenuButton(Transform parent, string name, string label, Vector2 anchor, bool primary)
         {
             var buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -492,30 +552,169 @@ namespace DevGames.Editor
             return button;
         }
 
-        static void CreateLevelSelectScene(Dictionary<string, Material> materials)
+        /// <summary>Gera a cena de seleção de fases (ilha da Fazenda liberada e ilhas futuras bloqueadas).</summary>
+        /// <remarks>Cria câmera, ilha 3D de prévia, painéis, botões ligados ao LevelSelectAnimator e salva a cena.</remarks>
+        static void CreateLevelSelectScene()
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            CreateMenuBackdrop(materials, "SELEÇÃO DE FASE");
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.46f, 0.50f, 0.42f);
+            RenderSettings.fog = true;
+            RenderSettings.fogColor = new Color(0.055f, 0.11f, 0.13f);
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogStartDistance = 18f;
+            RenderSettings.fogEndDistance = 34f;
+            CreateSun();
+
+            var camera = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener)).GetComponent<Camera>();
+            camera.tag = "MainCamera";
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.055f, 0.11f, 0.13f);
+            camera.fieldOfView = 38f;
+            camera.transform.position = new Vector3(0f, 2.7f, -14f);
+            camera.transform.rotation = Quaternion.LookRotation(new Vector3(0f, 0.2f, 5f) - camera.transform.position);
+
+            var preview = new GameObject("Prévia da Ilha da Fazenda").transform;
+            preview.position = new Vector3(4.6f, 0f, 5f);
+            var island = CreateModel(FoxIsle, "Ilha da Fazenda", preview, new Vector3(0f, -4.2f, 0f), Quaternion.Euler(0f, -18f, 0f), 8.4f, false);
+            if (island != null) ApplyFoxIsleMaterials(island);
+            else
+            {
+                CreateModel(IslandPack + "Land.fbx", "Ilha da Fazenda", preview, new Vector3(0f, -2.8f, 0f), Quaternion.Euler(0f, -18f, 0f), 5.8f, false);
+                CreateModel(FarmBuildings + "SmallBarn.fbx", "Celeiro", preview, new Vector3(0f, 0.4f, 0f), Quaternion.Euler(0f, 25f, 0f), 2.6f, false);
+                CreateModel(Nature + "CommonTree_3.fbx", "Árvore", preview, new Vector3(-2.2f, 0.25f, 0.5f), Quaternion.identity, 2.4f, false);
+            }
+
             var canvas = CreateCanvas("Level Select Canvas");
             var controller = canvas.gameObject.AddComponent<MenuController>();
-            CreateText(canvas.transform, "Title", "SELEÇÃO DE FASE", 42, new Vector2(0.5f, 0.79f), new Vector2(800f, 80f), TextAnchor.MiddleCenter, Color.white);
-            var farm = CreateButton(canvas.transform, "Farm", "1  FAZENDA", new Vector2(0.5f, 0.55f), new Vector2(420f, 85f));
-            UnityEventTools.AddPersistentListener(farm.onClick, controller.LoadFarm);
-            var best = CreateText(canvas.transform, "Farm Best", "Melhor tempo: --:--.--", 18, new Vector2(0.5f, 0.46f), new Vector2(420f, 40f), TextAnchor.MiddleCenter, new Color(1f, 0.86f, 0.60f));
+            var animator = canvas.gameObject.AddComponent<LevelSelectAnimator>();
+            var content = new GameObject("Conteúdo", typeof(RectTransform), typeof(CanvasGroup));
+            content.transform.SetParent(canvas.transform, false);
+            var contentRect = (RectTransform)content.transform;
+            contentRect.anchorMin = Vector2.zero;
+            contentRect.anchorMax = Vector2.one;
+            contentRect.offsetMin = contentRect.offsetMax = Vector2.zero;
+
+            CreateLevelSelectPanel(content.transform, "Painel lateral", Vector2.zero, new Vector2(0.46f, 1f), new Color(0.035f, 0.055f, 0.058f, 0.94f));
+            CreateLevelSelectPanel(content.transform, "Vinheta superior", new Vector2(0.46f, 0.87f), Vector2.one, new Color(0.025f, 0.04f, 0.045f, 0.46f));
+            CreateLevelSelectPanel(content.transform, "Vinheta inferior", new Vector2(0.46f, 0f), new Vector2(1f, 0.16f), new Color(0.025f, 0.04f, 0.045f, 0.66f));
+
+            var eyebrow = CreateText(content.transform, "Eyebrow", "MAPA DAS ILHAS   /   01 DE 05", 15, new Vector2(0.23f, 0.87f), new Vector2(430f, 28f), TextAnchor.MiddleLeft, new Color(0.95f, 0.64f, 0.27f));
+            eyebrow.fontStyle = FontStyle.Bold;
+            var title = CreateText(content.transform, "Title", "ESCOLHA\nUMA ILHA", 50, new Vector2(0.23f, 0.73f), new Vector2(430f, 120f), TextAnchor.MiddleLeft, new Color(1f, 0.96f, 0.87f));
+            title.fontStyle = FontStyle.Bold;
+            CreateText(content.transform, "Subtitle", "Selecione um destino e continue a busca\npelos dedos perdidos.", 18, new Vector2(0.23f, 0.61f), new Vector2(430f, 54f), TextAnchor.MiddleLeft, new Color(0.79f, 0.73f, 0.61f));
+
+            Text best;
+            var farm = CreateIslandButton(content.transform, out best);
+            UnityEventTools.AddPersistentListener(farm.onClick, animator.LoadFarm);
             SetObjectReference(controller, "farmButton", farm);
             SetObjectReference(controller, "farmBestText", best);
-            CreateText(canvas.transform, "Locked", "2  CIDADE  •  BLOQUEADA\n3  MONTANHAS  •  BLOQUEADA\n4  ESPAÇO  •  BLOQUEADA\n5  DIMENSÃO  •  BLOQUEADA", 20, new Vector2(0.5f, 0.25f), new Vector2(540f, 150f), TextAnchor.MiddleCenter, new Color(0.72f, 0.72f, 0.72f));
+
+            var mapLabel = CreateText(content.transform, "Selected Map", "MAPA SELECIONADO", 14, new Vector2(0.73f, 0.83f), new Vector2(470f, 24f), TextAnchor.MiddleCenter, new Color(0.95f, 0.64f, 0.27f));
+            mapLabel.fontStyle = FontStyle.Bold;
+            var mapTitle = CreateText(content.transform, "Farm Map Title", "FAZENDA SUSPENSA", 34, new Vector2(0.73f, 0.77f), new Vector2(520f, 50f), TextAnchor.MiddleCenter, new Color(1f, 0.96f, 0.87f));
+            mapTitle.fontStyle = FontStyle.Bold;
+            CreateText(content.transform, "Farm Tags", "PARKOUR VERTICAL   •   DIFICULDADE I", 14, new Vector2(0.73f, 0.71f), new Vector2(520f, 28f), TextAnchor.MiddleCenter, new Color(0.79f, 0.73f, 0.61f));
+
+            CreateLockedIsland(content.transform, new Vector2(0.54f, 0.09f), "02", "CIDADE");
+            CreateLockedIsland(content.transform, new Vector2(0.68f, 0.09f), "03", "MONTANHAS");
+            CreateLockedIsland(content.transform, new Vector2(0.82f, 0.09f), "04", "ESPAÇO");
+            CreateLockedIsland(content.transform, new Vector2(0.94f, 0.09f), "05", "DIMENSÃO");
+
+            var back = CreateButton(content.transform, "Back", "‹  VOLTAR", new Vector2(0.13f, 0.09f), new Vector2(180f, 48f));
+            back.GetComponent<Image>().color = new Color(0.08f, 0.10f, 0.10f, 0.96f);
+            UnityEventTools.AddPersistentListener(back.onClick, animator.LoadMainMenu);
+
+            var curtainObject = CreateLevelSelectPanel(canvas.transform, "Transição", Vector2.zero, Vector2.one, new Color(0.02f, 0.035f, 0.04f, 1f));
+            var curtain = curtainObject.GetComponent<Image>();
+            curtainObject.transform.SetAsLastSibling();
+            animator.Configure(contentRect, content.GetComponent<CanvasGroup>(), curtain, preview);
+            canvas.transform.Find("EventSystem").GetComponent<EventSystem>().firstSelectedGameObject = farm.gameObject;
             SaveScene(scene, $"{SceneRoot}/Menus/LevelSelect.unity");
         }
 
+        /// <summary>Cria um painel retangular da tela de seleção.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="anchorMin">Canto inferior esquerdo (0-1).</param>
+        /// <param name="anchorMax">Canto superior direito (0-1).</param>
+        /// <param name="color">Cor de fundo.</param>
+        /// <returns>O painel criado.</returns>
+        static GameObject CreateLevelSelectPanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Color color)
+        {
+            var panel = new GameObject(name, typeof(RectTransform), typeof(Image));
+            panel.transform.SetParent(parent, false);
+            var rect = (RectTransform)panel.transform;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            panel.GetComponent<Image>().color = color;
+            return panel;
+        }
+
+        /// <summary>Cria o botão da ilha Fazenda com o texto de melhor tempo.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="best">Saída: texto onde o melhor tempo é exibido.</param>
+        /// <returns>O Button da ilha.</returns>
+        static Button CreateIslandButton(Transform parent, out Text best)
+        {
+            var card = new GameObject("Farm Island", typeof(RectTransform), typeof(Image), typeof(Button), typeof(Outline));
+            card.transform.SetParent(parent, false);
+            var rect = (RectTransform)card.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(0.23f, 0.37f);
+            rect.sizeDelta = new Vector2(470f, 220f);
+            var image = card.GetComponent<Image>();
+            image.color = new Color(0.34f, 0.075f, 0.045f, 0.98f);
+            var outline = card.GetComponent<Outline>();
+            outline.effectColor = new Color(0.95f, 0.64f, 0.27f, 0.9f);
+            outline.effectDistance = new Vector2(3f, 0f);
+            var button = card.GetComponent<Button>();
+            var colors = button.colors;
+            colors.normalColor = image.color;
+            colors.highlightedColor = new Color(0.49f, 0.13f, 0.08f, 1f);
+            colors.pressedColor = new Color(0.27f, 0.055f, 0.035f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.fadeDuration = 0.18f;
+            button.colors = colors;
+
+            var status = CreateText(card.transform, "Status", "01   •   DISPONÍVEL", 14, new Vector2(0.5f, 0.84f), new Vector2(410f, 28f), TextAnchor.MiddleLeft, new Color(0.95f, 0.64f, 0.27f));
+            status.fontStyle = FontStyle.Bold;
+            var name = CreateText(card.transform, "Name", "ILHA DA FAZENDA", 28, new Vector2(0.5f, 0.62f), new Vector2(410f, 42f), TextAnchor.MiddleLeft, new Color(1f, 0.96f, 0.87f));
+            name.fontStyle = FontStyle.Bold;
+            CreateText(card.transform, "Description", "Celeiros, colheitas e um caminho acima das nuvens.", 15, new Vector2(0.5f, 0.43f), new Vector2(410f, 38f), TextAnchor.MiddleLeft, new Color(0.86f, 0.78f, 0.65f));
+            best = CreateText(card.transform, "Farm Best", "Melhor tempo: --:--.--", 14, new Vector2(0.5f, 0.23f), new Vector2(410f, 28f), TextAnchor.MiddleLeft, new Color(0.95f, 0.78f, 0.46f));
+            var action = CreateText(card.transform, "Action", "EXPLORAR A ILHA   →", 15, new Vector2(0.5f, 0.08f), new Vector2(410f, 28f), TextAnchor.MiddleRight, Color.white);
+            action.fontStyle = FontStyle.Bold;
+            return button;
+        }
+
+        /// <summary>Cria o card de uma ilha ainda bloqueada (fases 2 a 5).</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="anchor">Posição (0-1) na tela.</param>
+        /// <param name="number">Número da fase.</param>
+        /// <param name="label">Nome da fase.</param>
+        static void CreateLockedIsland(Transform parent, Vector2 anchor, string number, string label)
+        {
+            var card = new GameObject(label, typeof(RectTransform), typeof(Image));
+            card.transform.SetParent(parent, false);
+            var rect = (RectTransform)card.transform;
+            rect.anchorMin = rect.anchorMax = anchor;
+            rect.sizeDelta = new Vector2(142f, 72f);
+            card.GetComponent<Image>().color = new Color(0.06f, 0.075f, 0.075f, 0.88f);
+            var name = CreateText(card.transform, "Name", $"{number}  {label}", 13, new Vector2(0.5f, 0.63f), new Vector2(120f, 24f), TextAnchor.MiddleLeft, new Color(0.68f, 0.65f, 0.58f));
+            name.fontStyle = FontStyle.Bold;
+            CreateText(card.transform, "Lock", "—  BLOQUEADA", 11, new Vector2(0.5f, 0.3f), new Vector2(120f, 20f), TextAnchor.MiddleLeft, new Color(0.43f, 0.43f, 0.40f));
+        }
+
+        /// <summary>Gera a cena da fase 1 (Fazenda) com todos os objetos, jogador, câmera, UI e decoração física do pátio.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
+        /// <param name="definition">Dados da fase usados pela LevelSession.</param>
+        /// <remarks>Ordem: céu/sol, sessão, input, jogador, câmera, percurso, marcos, aves, HUD, tutoriais, objetivo, colliders dos props, decoração do pátio (spawner, fumaça, balde); depois salva.</remarks>
         static void CreateFarmScene(Dictionary<string, Material> materials, LevelDefinition definition)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            RenderSettings.ambientLight = new Color(0.48f, 0.50f, 0.52f);
-            RenderSettings.fog = true;
-            RenderSettings.fogColor = new Color(0.55f, 0.68f, 0.72f);
-            RenderSettings.fogDensity = 0.0025f;
-            CreateSun();
+            CreateSky(CreateSun());
 
             var session = new GameObject("Level Session").AddComponent<LevelSession>();
             session.Configure(definition);
@@ -532,10 +731,17 @@ namespace DevGames.Editor
             var hud = CreateGameplayUI(input, player.GetComponent<PlayerRespawn>());
             CreateTutorials(hud);
             CreateGoal(materials);
+            MakePropsSolid();
+            CreateSkillChallenge(materials);
 
             SaveScene(scene, $"{SceneRoot}/Levels/Farm.unity");
         }
 
+        /// <summary>Cria o jogador com CharacterController, movimento, escalada, passos, empurrão e o modelo animado.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
+        /// <param name="input">Leitor de teclado/mouse.</param>
+        /// <returns>O GameObject do jogador.</returns>
+        /// <remarks>Se o modelo Mixamo faltar, monta um boneco de primitivas no lugar.</remarks>
         static GameObject CreatePlayer(Dictionary<string, Material> materials, InputReader input)
         {
             var player = new GameObject("Player");
@@ -543,18 +749,25 @@ namespace DevGames.Editor
             player.layer = LayerMask.NameToLayer("Player");
             player.transform.position = new Vector3(0f, 0.05f, 0f);
             var controller = player.AddComponent<CharacterController>();
-            controller.height = 1.8f;
-            controller.radius = 0.34f;
-            controller.center = Vector3.up * 0.9f;
-            controller.stepOffset = 0.25f;
+            controller.height = 1.8f * CharacterScale;
+            controller.radius = 0.34f * CharacterScale;
+            controller.center = Vector3.up * (0.9f * CharacterScale);
+            controller.stepOffset = 0.25f * CharacterScale;
             var ledge = player.AddComponent<LedgeClimber>();
             ledge.Configure(LayerMask.GetMask("Climbable"));
+            // Grab reach and ledge band follow the body; hang and pull-up offsets already scale with the controller.
+            SetFloats(ledge, ("reach", 0.7f * CharacterScale));
+            var band = new SerializedObject(ledge);
+            band.FindProperty("ledgeHeightRange").vector2Value = new Vector2(0.9f, 1.5f) * CharacterScale;
+            band.ApplyModifiedPropertiesWithoutUndo();
             player.AddComponent<PlayerMotor>().Configure(input, null);
             player.AddComponent<PlayerRespawn>().Configure(input);
             player.AddComponent<AudioSource>();
             player.AddComponent<PlayerFootsteps>();
+            player.AddComponent<PlayerPusher>();
 
-            var character = CreateModel(CharacterModel, "Character Visual", player.transform, Vector3.zero, Quaternion.Euler(0f, 180f, 0f), 1.75f, false);
+            // The Mixamo character already faces +Z, the player's forward (checked on a rendered contact sheet).
+            var character = CreateModel(CharacterModel, "Character Visual", player.transform, Vector3.zero, Quaternion.identity, 1.75f * CharacterScale, false);
             if (character == null)
             {
                 var body = CreateVisual(PrimitiveType.Capsule, "Body", player.transform, Vector3.up * 0.95f, new Vector3(0.58f, 0.68f, 0.42f), materials["Cream"]);
@@ -562,16 +775,25 @@ namespace DevGames.Editor
                 CreateVisual(PrimitiveType.Sphere, "Hair", body.transform, new Vector3(0f, 1.07f, -0.01f), new Vector3(0.58f, 0.27f, 0.58f), materials["Straw"]);
                 CreateVisual(PrimitiveType.Cube, "Shirt", body.transform, new Vector3(0f, 0.18f, 0f), new Vector3(0.65f, 0.48f, 0.38f), materials["BarnRed"]);
             }
-            else ConfigureCharacterAnimation(player, character);
+            else
+            {
+                ConfigureCharacterAnimation(player, character);
+                SetObjectReference(ledge, "visual", character.transform);
+            }
             return player;
         }
 
+        /// <summary>Liga o Animator, PlayerAnimator e o ajuste dos pés ao modelo do jogador.</summary>
+        /// <param name="player">Raiz do jogador.</param>
+        /// <param name="character">Modelo visual animado.</param>
         static void ConfigureCharacterAnimation(GameObject player, GameObject character)
         {
             var animator = character.GetComponent<Animator>();
             if (animator == null) animator = character.AddComponent<Animator>();
             animator.avatar = AssetDatabase.LoadAllAssetsAtPath(CharacterModel).OfType<Avatar>().FirstOrDefault(avatar => avatar.isValid && avatar.isHuman);
-            animator.runtimeAnimatorController = CreateCharacterController();
+            // How far this body travels per unit of humanoid clip speed: its human scale times the model's size.
+            animator.Rebind();
+            animator.runtimeAnimatorController = CreateCharacterController(animator.humanScale * character.transform.lossyScale.y);
             animator.applyRootMotion = false;
 
             var playerAnimator = player.AddComponent<PlayerAnimator>();
@@ -580,34 +802,161 @@ namespace DevGames.Editor
             player.AddComponent<PlayerVisualGrounding>().Configure(player.GetComponent<PlayerMotor>(), animator, character.transform);
         }
 
-        static AnimatorController CreateCharacterController()
+        /// <summary>Cria o Animator Controller do jogador: parado/andando/correndo (blend), pulo, queda, aterrissagem, pendurar e subir.</summary>
+        /// <returns>O controller salvo como asset.</returns>
+        /// <remarks>Cria parâmetros, estados com os clipes Mixamo e as transições entre eles.</remarks>
+        static AnimatorController CreateCharacterController(float stride)
         {
+            // Rebuilt every time, so newly downloaded Mixamo clips replace their fallbacks.
             const string path = Root + "/Settings/FarmCharacter.controller";
-            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
-            if (controller != null && controller.parameters.Length > 0) return controller;
-            if (controller != null) AssetDatabase.DeleteAsset(path);
-
-            controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            AssetDatabase.DeleteAsset(path);
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
             controller.AddParameter("Speed", AnimatorControllerParameterType.Float);
             controller.AddParameter("VerticalSpeed", AnimatorControllerParameterType.Float);
             controller.AddParameter("Grounded", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Hanging", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Climbing", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("HardLand", AnimatorControllerParameterType.Trigger);
 
-            var blendTree = new BlendTree { name = "Locomotion", blendParameter = "Speed" };
+            // Automatic thresholds off BEFORE adding children: with it on, Unity rewrote them to 0..1, so at any
+            // pace above 1 m/s (the 1.8 m/s walk included) the run played and the feet slid backwards.
+            var blendTree = new BlendTree { name = "Locomotion", blendParameter = "Speed", useAutomaticThresholds = false };
             AssetDatabase.AddObjectToAsset(blendTree, controller);
-            blendTree.AddChild(FindAnimation("Armature|Idle_Loop"), 0f);
-            blendTree.AddChild(FindAnimation("Armature|Walk_Loop"), 4.5f);
-            blendTree.AddChild(FindAnimation("Armature|Sprint_Loop"), 7f);
-            blendTree.useAutomaticThresholds = false;
+            // Each clip is time-scaled so the ground speed it animates on this body matches the player's speed at
+            // its threshold: walk 1.8 (W), sprint 7 (Shift). Matching speeds keeps the feet planted.
+            blendTree.AddChild(CharacterClip("Idle"), 0f);
+            blendTree.AddChild(CharacterClip("Walk"), 1.8f);
+            blendTree.AddChild(CharacterClip("Jog"), 4.5f);
+            // The sprint reuses the "Running" clip, played faster: Mixamo's Fast Run kicks the back foot up
+            // flat and turned backwards (checked frame by frame), which read as a broken foot in game.
+            blendTree.AddChild(CharacterClip("Jog"), 7f);
+            // Clip ground speed on this body = clip.averageSpeed x stride (checked against measured root motion).
+            var children = blendTree.children;
+            for (var i = 1; i < children.Length; i++)
+            {
+                var clip = (AnimationClip)children[i].motion;
+                if (clip != null && clip.averageSpeed.magnitude > 0.01f)
+                    children[i].timeScale = children[i].threshold / (clip.averageSpeed.magnitude * stride);
+            }
+            blendTree.children = children;
 
             var stateMachine = controller.layers[0].stateMachine;
             var locomotion = stateMachine.AddState("Locomotion");
             locomotion.motion = blendTree;
+            // Foot IK pins each retargeted foot where the clip planted it, instead of where the rig ratio lands it.
+            locomotion.iKOnFeet = true;
             stateMachine.defaultState = locomotion;
+
+            // Jump: take-off, airborne loop (also used when walking off a ledge) and landing.
+            var jumpStart = stateMachine.AddState("JumpStart");
+            jumpStart.motion = CharacterClip("JumpStart", "Jump");
+            var jumpLoop = stateMachine.AddState("JumpLoop");
+            jumpLoop.motion = CharacterClip("Fall");
+            var jumpLand = stateMachine.AddState("JumpLand");
+            jumpLand.motion = CharacterClip("JumpLand", "Jump");
+            jumpLand.iKOnFeet = true;
+
+            // A big drop (Only Up fall) lands in a heavy crouch; listed first so it wins over the normal landing.
+            var hardLanding = stateMachine.AddState("HardLanding");
+            hardLanding.motion = CharacterClip("HardLanding");
+            hardLanding.iKOnFeet = true;
+            Transition(jumpLoop, hardLanding, 0.05f, ("HardLand", (object)null));
+            Transition(jumpStart, hardLanding, 0.05f, ("HardLand", (object)null));
+            var recovered = hardLanding.AddTransition(locomotion);
+            recovered.hasExitTime = true;
+            recovered.exitTime = 0.6f;
+            recovered.duration = 0.2f;
+            // Running straight on cuts the crouch short instead of sliding in it.
+            var runOff = hardLanding.AddTransition(locomotion);
+            runOff.hasExitTime = true;
+            runOff.exitTime = 0.25f;
+            runOff.duration = 0.2f;
+            runOff.AddCondition(AnimatorConditionMode.Greater, 2f, "Speed");
+
+            Transition(locomotion, jumpStart, 0.05f, ("Grounded", false), ("VerticalSpeed", 0.5f));
+            Transition(jumpLand, jumpStart, 0.05f, ("Grounded", false), ("VerticalSpeed", 0.5f));
+            Transition(locomotion, jumpLoop, 0.2f, ("Grounded", false), ("VerticalSpeed", -6f));
+            Transition(jumpStart, jumpLand, 0.05f, ("Grounded", true));
+            Transition(jumpLoop, jumpLand, 0.05f, ("Grounded", true));
+
+            // Ledge grab (LedgeClimber): hang, then pull up; letting go drops back into the fall loop.
+            var hang = stateMachine.AddState("Hang");
+            hang.motion = CharacterClip("Hang");
+            var climbUp = stateMachine.AddState("ClimbUp");
+            climbUp.motion = CharacterClip("ClimbUp");
+            climbUp.speed = 1.6f; // the 1.1 s pull-up fits LedgeClimber's 0.7 s climb
+            Transition(stateMachine, hang, 0.1f, ("Hanging", true));
+            Transition(hang, climbUp, 0.05f, ("Climbing", true));
+            Transition(hang, jumpLoop, 0.1f, ("Hanging", false), ("Climbing", false));
+            Transition(climbUp, locomotion, 0.1f, ("Climbing", false));
+            // A normal hop holds the take-off clip's last (apex) pose until touch-down; only a real fall
+            // (dropping faster than 10 m/s, about 2 m below the apex) switches to the flailing fall loop.
+            Transition(jumpStart, jumpLoop, 0.25f, ("VerticalSpeed", -10f));
+            var landed = jumpLand.AddTransition(locomotion);
+            landed.hasExitTime = true;
+            landed.exitTime = 0.7f;
+            landed.duration = 0.2f;
+            // Landing on the run goes straight back into the stride instead of finishing the crouch.
+            var runOn = jumpLand.AddTransition(locomotion);
+            runOn.hasExitTime = true;
+            runOn.exitTime = 0.2f;
+            runOn.duration = 0.15f;
+            runOn.AddCondition(AnimatorConditionMode.Greater, 2f, "Speed");
             return controller;
         }
 
+        /// <summary>Cria uma transição entre dois estados do Animator com condições.</summary>
+        /// <param name="from">Estado de origem.</param>
+        /// <param name="to">Estado de destino.</param>
+        /// <param name="duration">Duração do blend em segundos.</param>
+        /// <param name="conditions">Pares (parâmetro, valor) exigidos.</param>
+        static void Transition(AnimatorState from, AnimatorState to, float duration, params (string parameter, object value)[] conditions) =>
+            Conditions(from.AddTransition(to), duration, conditions);
+
+        /// <summary>From Any State, without restarting the target while it is already playing.</summary>
+        static void Transition(AnimatorStateMachine any, AnimatorState to, float duration, params (string parameter, object value)[] conditions)
+        {
+            var transition = any.AddAnyStateTransition(to);
+            transition.canTransitionToSelf = false;
+            Conditions(transition, duration, conditions);
+        }
+
+        /// <summary>
+        /// Immediate transition. A bool condition must match; a null value is a trigger; a float condition is
+        /// "greater than" when positive and "less than" when negative, so ("VerticalSpeed", -4) means falling faster than 4 m/s.
+        /// </summary>
+        static void Conditions(AnimatorStateTransition transition, float duration, (string parameter, object value)[] conditions)
+        {
+            transition.hasExitTime = false;
+            transition.duration = duration;
+            foreach (var (parameter, value) in conditions)
+            {
+                if (value == null) transition.AddCondition(AnimatorConditionMode.If, 0f, parameter);
+                else if (value is bool flag) transition.AddCondition(flag ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, parameter);
+                else
+                {
+                    var threshold = (float)value;
+                    transition.AddCondition(threshold >= 0f ? AnimatorConditionMode.Greater : AnimatorConditionMode.Less, threshold, parameter);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The Mixamo clip <paramref name="clip"/> from Mixamo/<paramref name="file"/>.fbx (file defaults to the
+        /// clip name); null with a warning when it is missing.
+        /// </summary>
+        static AnimationClip CharacterClip(string clip, string file = null)
+        {
+            var mixamo = AssetDatabase.LoadAllAssetsAtPath($"{Mixamo}{file ?? clip}.fbx").OfType<AnimationClip>()
+                .FirstOrDefault(item => item.name == clip);
+            // No fallback: the other libraries are Generic rigs and cannot drive the Mixamo humanoid.
+            if (mixamo == null) Debug.LogWarning($"Clipe '{clip}' nao encontrado em {Mixamo}{file ?? clip}.fbx - reimporte a pasta Mixamo e aplique a fazenda de novo.");
+            return mixamo;
+        }
+
+        /// <summary>Procura um clipe de animação no projeto pelo nome.</summary>
+        /// <param name="name">Nome do clipe.</param>
+        /// <returns>O clipe encontrado, ou null.</returns>
         static AnimationClip FindAnimation(string name)
         {
             foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(CharacterAnimations))
@@ -615,6 +964,10 @@ namespace DevGames.Editor
             return null;
         }
 
+        /// <summary>Cria a câmera em terceira pessoa que segue o jogador.</summary>
+        /// <param name="target">Transform do jogador.</param>
+        /// <param name="input">Leitor de mouse.</param>
+        /// <returns>A Camera criada.</returns>
         static Camera CreateCamera(Transform target, InputReader input)
         {
             var cameraObject = new GameObject("Main Camera");
@@ -626,7 +979,19 @@ namespace DevGames.Editor
             cameraObject.AddComponent<AudioListener>();
             var follow = cameraObject.AddComponent<ThirdPersonCamera>();
             follow.Configure(target, input);
+            SetFloats(follow, ("pivotHeight", 1.5f * CharacterScale), ("distance", 5f * CharacterScale));
             return camera;
+        }
+
+        // The character was dwarfed by the farm (13 m barn, crates up to 2.2 m): body, collider, camera, grab
+        // reach and animation pace all scale by this, the course's jump physics do not.
+        const float CharacterScale = 1.2f;
+
+        static void SetFloats(Object target, params (string property, float value)[] values)
+        {
+            var serialized = new SerializedObject(target);
+            foreach (var (property, value) in values) serialized.FindProperty(property).floatValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>Builds a hillside farm whose parkour is attached to working areas.</summary>
@@ -642,13 +1007,30 @@ namespace DevGames.Editor
         const float IslandRadius = 9f;
         const float IslandLanding = 7.5f;
         static readonly Vector3 RoutePropSize = new(3f, 1.1f, 2.6f);
-        static readonly string[] RouteProps = { "Hay.fbx", "Crate.fbx", "Bags.fbx", "Hay.fbx", "Barrel.fbx" };
+        // Floating route props keep their own proportions inside this box (across, height, along the jump).
+        static readonly Vector3 RoutePropMax = new(2.6f, 2.2f, 3f);
+        static readonly Vector3 AnimalPatchSize = new(3.2f, 0.6f, 3.2f);
+        const int AnimalEvery = 5;
 
-        // The barn stands on the field; the other landmarks float on islands above it.
+        // Farm things with a flat top to land on: bales, feed sacks, crates, barrels, buckets, bench, logs.
+        // Round or roofed ones (round bale, pumpkins, well, coop, carts with canopy, truck) left no footing.
+        static readonly string[] RouteProps =
+        {
+            FarmProps + "Hay.fbx", CozyFarm + "woodenbox.fbx", FarmProps + "Bags.fbx", SurvivalKit + "workbench.fbx",
+            CozyFarm + "barrel.fbx", FarmProps + "Crate.fbx", CozyFarm + "haystackcube.fbx", CozyFarm + "bucketwooden.fbx",
+            FarmProps + "Barrel.fbx", SurvivalKit + "resource-wood.fbx", CozyFarm + "woodenboxvar.fbx", SurvivalKit + "box-large.fbx",
+            SurvivalKit + "box.fbx", SurvivalKit + "barrel.fbx", CozyFarm + "woodenbox_001.fbx",
+        };
+
+        // Every few jumps an animal just stands there on a floating tuft of grass.
+        static readonly string[] RouteAnimals = { "Cow.fbx", "Pig.fbx", "Sheep.fbx", "Horse.fbx", "Llama.fbx", "Pug.fbx", "Zebra.fbx" };
+
+        // Only Up: the barn stands on the field and the floating islands zigzag upward right above
+        // it, so a fall always lands on a lower part of the course (or the field), never the void.
         static readonly Vector2 BarnCenter = new(12f, 34f);
-        static readonly Vector2 SiloCenter = new(-10f, 64f);
-        static readonly Vector2 MillCenter = new(10f, 92f);
-        static readonly Vector2 FinalCenter = new(0f, 116f);
+        static readonly Vector2 SiloCenter = new(-12f, 38f);
+        static readonly Vector2 MillCenter = new(-8f, 6f);
+        static readonly Vector2 FinalCenter = new(22f, 10f);
         const float BarnHeight = 13f;
         const float SiloBase = 17f, SiloHeight = 16f;
         const float MillBase = 38f, MillHeight = 24f;
@@ -681,8 +1063,11 @@ namespace DevGames.Editor
 
             var route = new List<(string name, Vector3[] points)> { ("Escada do Celeiro", barn.ToArray()) };
             var exit = new Vector3(12f, barnTop, 40.5f);
-            exit = AddFloatingStation(route, "Silo", exit, SiloCenter, SiloBase, SiloHeight, 5.2f, 45f, MillCenter);
-            exit = AddFloatingStation(route, "Moinho", exit, MillCenter, MillBase, MillHeight, 4.6f, -45f, FinalCenter);
+            // Spiral radius leaves 1.6 m (silo) and 2.2 m (mill) between the props and the tower wall: at 5.2 and
+            // 4.6 m it was 0.4/0.8 m, narrower than the player, who got stuck there. Smaller angle steps keep
+            // the hop length as before (3.7-4.1 m).
+            exit = AddFloatingStation(route, "Silo", exit, SiloCenter, SiloBase, SiloHeight, 6.4f, 34f, MillCenter);
+            exit = AddFloatingStation(route, "Moinho", exit, MillCenter, MillBase, MillHeight, 6.0f, -40f, FinalCenter);
             AddBridge(route, "Casa", exit, FinalCenter, FinalBase, FinalLanding);
             return route;
         }
@@ -690,6 +1075,10 @@ namespace DevGames.Editor
         static Vector3 OnCircle(Vector2 center, float radius, float degrees, float y) =>
             new(center.x + Mathf.Sin(degrees * Mathf.Deg2Rad) * radius, y, center.y + Mathf.Cos(degrees * Mathf.Deg2Rad) * radius);
 
+        /// <summary>Ângulo (em graus) de um ponto em relação a um centro no plano XZ.</summary>
+        /// <param name="center">Centro (x, z).</param>
+        /// <param name="point">Ponto no mundo.</param>
+        /// <returns>Ângulo em graus.</returns>
         static float AngleFrom(Vector2 center, Vector3 point) =>
             Mathf.Atan2(point.x - center.x, point.z - center.y) * Mathf.Rad2Deg;
 
@@ -752,9 +1141,12 @@ namespace DevGames.Editor
                         throw new System.InvalidOperationException($"Objetos da rota sobrepostos em {props[i]} e {props[j]}.");
         }
 
+        /// <summary>Monta o percurso de plataformas: terreno, rota rural, props flutuantes, ilhas e estações com faróis.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
+        /// <remarks>Valida a rota (saltos alcançáveis), cria um prop ou animal em cada ponto e as ilhas/estações nos extremos de cada ponte.</remarks>
         static void CreateComposedCourse(Dictionary<string, Material> materials)
         {
-            new GameObject("FAZENDA_VERTICAL_V30");
+            new GameObject("FAZENDA_VERTICAL_V49");
             CreateFarmTerrain(materials);
             CreateGroundedFarmRoute();
 
@@ -768,10 +1160,14 @@ namespace DevGames.Editor
                 {
                     var toNext = points[i + 1] - points[i];
                     var yaw = Mathf.Atan2(toNext.x, toNext.z) * Mathf.Rad2Deg;
-                    CreateFarmPropLanding($"{name} {i}", FarmProps + RouteProps[propIndex++ % RouteProps.Length],
-                        points[i], Quaternion.Euler(0f, yaw, 0f), RoutePropSize).transform.SetParent(props, true);
+                    var slot = propIndex++;
+                    if (slot % AnimalEvery == AnimalEvery - 1)
+                        CreateAnimalLanding($"{name} {i}", RouteAnimals[slot / AnimalEvery % RouteAnimals.Length], points[i], yaw, props);
+                    else
+                        CreateRouteProp($"{name} {i}", RouteProps[slot % RouteProps.Length], points[i], yaw, props);
                 }
             }
+            CreateFarmJokes();
 
             // route[1 + 2k] is the bridge onto island k; its last point is the island landing.
             CreateIsland("Silo", SiloCenter, SiloBase, Last(route[1].points), materials);
@@ -905,15 +1301,17 @@ namespace DevGames.Editor
             var house = isle.transform.Find("House");
             if (cottage && house != null)
             {
-                house.gameObject.layer = LayerMask.NameToLayer("CameraBlocker");
-                house.gameObject.AddComponent<BoxCollider>();
+                // Exact shape, every corner of walls, roof and chimney (a box missed or overshot them).
+                AddMeshColliders(house.gameObject, "CameraBlocker");
             }
             return true;
         }
 
         // The field is itself a big floating island; past its edge is the void.
-        static readonly Rect FieldIsland = new(-32f, -18f, 72f, 68f);
+        public static readonly Rect FieldIsland = new(-32f, -18f, 72f, 68f);
 
+        /// <summary>Cria o chão da fazenda (pasto, caminhos de terra e base rochosa).</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateFarmTerrain(Dictionary<string, Material> materials)
         {
             var root = new GameObject("Ilha da Fazenda").transform;
@@ -1186,14 +1584,151 @@ namespace DevGames.Editor
             Quaternion rotation, Vector3 colliderSize)
         {
             var center = topCenter - Vector3.up * colliderSize.y * 0.5f;
-            var collider = CreateBlock(name + " Collider", center, colliderSize, null, "Climbable");
-            collider.transform.rotation = rotation;
+            var root = new GameObject(name + " Collider");
+            root.transform.SetPositionAndRotation(center, rotation);
 
-            SetVisible(collider, false);
-            FitToBox(CreateStableFarmProp(name, modelPath, center, Quaternion.identity, colliderSize),
+            // The stretched model fills the box exactly, but a rounded one (the grass tuft) leaves the
+            // box corners in the air; its own mesh is the collider, on the Climbable layer for ledge grabs.
+            var visual = FitToBox(CreateStableFarmProp(name, modelPath, center, Quaternion.identity, colliderSize),
                 center, rotation, colliderSize);
+            visual.SetParent(root.transform, true);
+            AddMeshColliders(visual.gameObject, "Climbable");
+            return root;
+        }
 
-            return collider;
+        /// <summary>Every model the floating route can place, for the asset check in the tests.</summary>
+        public static IEnumerable<string> RouteModelPaths() =>
+            RouteProps.Concat(RouteAnimals.Select(file => Animals + file)).Append(SurvivalKit + "rock-flat-grass.fbx");
+
+        /// <summary>Caixa que envolve todos os renderers de um objeto.</summary>
+        /// <param name="root">Objeto analisado.</param>
+        /// <returns>Bounds em coordenadas do mundo.</returns>
+        static Bounds RendererBounds(GameObject root)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>(true);
+            var bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Length; i++) bounds.Encapsulate(renderers[i].bounds);
+            return bounds;
+        }
+
+        /// <summary>
+        /// Floating route prop scaled uniformly (no stretching) to fit RoutePropMax, long side along
+        /// the jump. Its top sits on the route point; its collider is its own mesh.
+        /// </summary>
+        static void CreateRouteProp(string name, string path, Vector3 top, float yaw, Transform parent)
+        {
+            var model = CreateModel(path, name, null, Vector3.zero, Quaternion.identity, 1f, true);
+            if (model == null)
+            {
+                CreateFarmPropLanding(name, FarmProps + "Hay.fbx", top, Quaternion.Euler(0f, yaw, 0f), RoutePropSize).transform.SetParent(parent, true);
+                return;
+            }
+
+            var size = RendererBounds(model).size;
+            var turn = size.x > size.z ? 90f : 0f;
+            var across = Mathf.Min(size.x, size.z);
+            var along = Mathf.Max(size.x, size.z);
+            var scale = Mathf.Min(RoutePropMax.x / across, RoutePropMax.y / size.y, RoutePropMax.z / along);
+            var height = size.y * scale;
+
+            // CreateModel put the model's bottom centre at the origin, so a pivot there scales and turns it in place.
+            var pivot = new GameObject(name).transform;
+            model.transform.SetParent(pivot, true);
+            pivot.localScale = Vector3.one * scale;
+            pivot.SetPositionAndRotation(top - Vector3.up * height, Quaternion.Euler(0f, yaw + turn, 0f));
+            pivot.SetParent(parent, true);
+
+            // A box exactly the model's size: a flat top to land on (bumpy meshes gave no footing) without the
+            // old minimum size that left ledges in the air. Climbable, so ledge grabs find its edge.
+            pivot.gameObject.layer = LayerMask.NameToLayer("Climbable");
+            var box = pivot.gameObject.AddComponent<BoxCollider>();
+            box.center = Vector3.up * (size.y * 0.5f);
+            box.size = size;
+        }
+
+        /// <summary>
+        /// Every mesh of the model collides with its exact shape on the given layer, replacing any older
+        /// collider. Boxes around models left corners walk-through or added invisible walls.
+        /// </summary>
+        static void AddMeshColliders(GameObject model, string layer)
+        {
+            var index = LayerMask.NameToLayer(layer);
+            foreach (var filter in model.GetComponentsInChildren<MeshFilter>())
+            {
+                if (filter.sharedMesh == null) continue;
+                foreach (var old in filter.GetComponents<Collider>()) Object.DestroyImmediate(old);
+                filter.gameObject.layer = index;
+                filter.gameObject.AddComponent<MeshCollider>().sharedMesh = filter.sharedMesh;
+            }
+        }
+
+        /// <summary>A tuft of grass floating in the air with an animal just standing on it, off to one side.</summary>
+        static void CreateAnimalLanding(string name, string animal, Vector3 top, float yaw, Transform parent)
+        {
+            var rotation = Quaternion.Euler(0f, yaw, 0f);
+            CreateFarmPropLanding(name, SurvivalKit + "rock-flat-grass.fbx", top, rotation, AnimalPatchSize).transform.SetParent(parent, true);
+            var holder = CreateWanderingAnimal($"{name} ({System.IO.Path.GetFileNameWithoutExtension(animal)})",
+                animal, top + rotation * Vector3.right * 1.1f, 1.3f, 0f, 0f);
+            // MakePropsSolid gives it a body, so the player can bump into it or hop on its back.
+            holder?.transform.SetParent(parent, true);
+        }
+
+        /// <summary>Decor only: farm things stranded in the sky around the course, for laughs.</summary>
+        static void CreateFarmJokes()
+        {
+            var root = new GameObject("Absurdos da Fazenda").transform;
+            void Stranded(string name, string basePath, float baseHeight, string animal, float animalHeight, Vector3 at)
+            {
+                CreateModel(basePath, name, root, at, Quaternion.Euler(0f, at.x * 13f, 0f), baseHeight, true);
+                CreateWanderingAnimal($"{name} - Bicho", animal, at + Vector3.up * baseHeight, animalHeight, 0f, 0f)
+                    ?.transform.SetParent(root, true);
+            }
+
+            // Out past the field's edge, at the heights the climb passes, so they are seen on the way up.
+            Stranded("Vaca no Meio do Nada", SurvivalKit + "rock-flat-grass.fbx", 0.8f, "Cow.fbx", 1.5f, new Vector3(-44f, 10f, 22f));
+            Stranded("Porco na Nuvem", IslandPack + "Cloud.fbx", 2f, "Pig.fbx", 1.1f, new Vector3(52f, 18f, 30f));
+            Stranded("Lhama no Feno", CozyFarm + "haystackcube.fbx", 2f, "Llama.fbx", 1.8f, new Vector3(-42f, 32f, -8f));
+            Stranded("Pug Gigante", SurvivalKit + "rock-flat-grass.fbx", 1.2f, "Pug.fbx", 4f, new Vector3(-40f, 50f, 45f));
+            Stranded("Ovelha no Fardo", CozyFarm + "haystackround.fbx", 1.8f, "Sheep.fbx", 1.2f, new Vector3(50f, 62f, -10f));
+            CreateModel(CozyFarm + "truck.fbx", "Caminhao Perdido", root, new Vector3(52f, 36f, 45f), Quaternion.Euler(20f, 35f, 90f), 3f, true);
+        }
+
+        // Model sources left without a mesh collider: plants and crops would trip the player, clouds are
+        // sky, and the course buildings already have hand-fitted colliders (the mill's balcony would block the spiral).
+        static readonly string[] PassableModels =
+        {
+            "Grass", "Flower", "flower", "Fern", "Clover", "Plant", "Petal", "Pebble", "Mushroom", "Bush", "UltimateCrops", "Cloud",
+            "TowerWindmill", "Silo",
+        };
+
+        /// <summary>
+        /// Final pass over the built scene: every visible model without a collider gets one shaped
+        /// like its mesh, and every animal a box that moves with it. Spinning blades and birds stay passable.
+        /// </summary>
+        static void MakePropsSolid()
+        {
+            foreach (var renderer in Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+            {
+                var go = renderer.gameObject;
+                var filter = go.GetComponent<MeshFilter>();
+                // A collider on the object or a parent already shapes it (route props' flat-top box).
+                if (!renderer.enabled || filter == null || filter.sharedMesh == null || go.GetComponentInParent<Collider>() != null) continue;
+                if (go.GetComponentInParent<CharacterController>() != null || go.GetComponentInParent<WindmillRotor>() != null ||
+                    go.GetComponentInParent<BirdFlight>() != null) continue;
+                var source = AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromOriginalSource(go));
+                if (string.IsNullOrEmpty(source) || PassableModels.Any(part => source.Contains(part))) continue;
+                go.AddComponent<MeshCollider>().sharedMesh = filter.sharedMesh;
+            }
+
+            foreach (var animal in Object.FindObjectsByType<AnimalWander>(FindObjectsSortMode.None))
+            {
+                if (animal.GetComponent<Collider>() != null) continue;
+                var bounds = RendererBounds(animal.gameObject);
+                var box = animal.gameObject.AddComponent<BoxCollider>();
+                box.center = animal.transform.InverseTransformPoint(bounds.center);
+                var scale = animal.transform.lossyScale;
+                box.size = new Vector3(bounds.size.x / scale.x, bounds.size.y / scale.y, bounds.size.z / scale.z);
+            }
         }
 
         /// <summary>Stretches a visual so it fills the gameplay box exactly: no invisible ledges.</summary>
@@ -1275,6 +1810,8 @@ namespace DevGames.Editor
             return root;
         }
 
+        /// <summary>Cria os marcos visuais da fazenda: celeiro, silo e moinho.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateFarmLandmarks(Dictionary<string, Material> materials)
         {
             CreateBarn(OnGround(BarnCenter.x, BarnCenter.y), materials);
@@ -1284,6 +1821,9 @@ namespace DevGames.Editor
             CreateGroundFarm(materials);
         }
 
+        /// <summary>Cria o celeiro.</summary>
+        /// <param name="groundPosition">Posição no chão.</param>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateBarn(Vector3 groundPosition, Dictionary<string, Material> materials)
         {
             var barn = CreateBlock("Celeiro Collider", groundPosition + Vector3.up * 4.5f, new Vector3(12f, 9f, 15f), materials["BarnRed"], "CameraBlocker");
@@ -1292,11 +1832,18 @@ namespace DevGames.Editor
             var model = CreateModel(FarmBuildings + "BigBarn.fbx", "Celeiro", null, groundPosition, Quaternion.Euler(0f, 90f, 0f), BarnHeight, true);
             if (model != null)
             {
-                SetVisible(barn, false);
-                SetVisible(roof, false);
+                // The model is 13.5 x 12.7 m against the 12 x 15 m box: its corners had no collision and the
+                // box stood 1.15 m in front of the wall. The model's own shape collides now; the boxes are
+                // only the fallback when the pack is missing.
+                Object.DestroyImmediate(barn);
+                Object.DestroyImmediate(roof);
+                AddMeshColliders(model, "CameraBlocker");
             }
         }
 
+        /// <summary>Cria o silo com cintas metálicas.</summary>
+        /// <param name="basePosition">Posição da base.</param>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateSilo(Vector3 basePosition, Dictionary<string, Material> materials)
         {
             // The body keeps the primitive's capsule collider, so the spiral hugs a round wall.
@@ -1311,6 +1858,9 @@ namespace DevGames.Editor
                     basePosition + Vector3.up * y, new Vector3(7.12f, 0.06f, 7.12f), materials["Cream"]);
         }
 
+        /// <summary>Cria o moinho e suas pás giratórias (WindmillRotor).</summary>
+        /// <param name="basePosition">Posição da base.</param>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateWindmill(Vector3 basePosition, Dictionary<string, Material> materials)
         {
             // Fallback geometry was authored for a 44 m windmill; scale it with the model.
@@ -1637,6 +2187,14 @@ namespace DevGames.Editor
 
         static float Jitter(System.Random random, float amount) => ((float)random.NextDouble() - 0.5f) * 2f * amount;
 
+        /// <summary>Coloca um modelo de natureza no chão com altura e rotação aleatórias.</summary>
+        /// <param name="root">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="file">Arquivo FBX do pacote de natureza.</param>
+        /// <param name="point">Posição (x, z).</param>
+        /// <param name="minHeight">Altura mínima.</param>
+        /// <param name="maxHeight">Altura máxima.</param>
+        /// <param name="random">Gerador aleatório com semente fixa.</param>
         static void PlaceNature(Transform root, string name, string file, Vector2 point, float minHeight, float maxHeight, System.Random random) =>
             CreateModel(Nature + file, name, root, OnGround(point.x, point.y), Quaternion.Euler(0f, random.Next(360), 0f),
                 Mathf.Lerp(minHeight, maxHeight, (float)random.NextDouble()), true);
@@ -1653,6 +2211,14 @@ namespace DevGames.Editor
             }
         }
 
+        /// <summary>Coloca uma fileira de props iguais.</summary>
+        /// <param name="root">Transform pai na hierarquia.</param>
+        /// <param name="name">Prefixo do nome.</param>
+        /// <param name="file">Arquivo FBX do prop.</param>
+        /// <param name="start">Posição do primeiro.</param>
+        /// <param name="step">Distância entre um e outro.</param>
+        /// <param name="count">Quantidade.</param>
+        /// <param name="height">Altura de cada um.</param>
         static void PropRow(Transform root, string name, string file, Vector3 start, Vector3 step, int count, float height)
         {
             for (var i = 0; i < count; i++)
@@ -1685,7 +2251,7 @@ namespace DevGames.Editor
         /// <param name="height">Desired visual height in metres.</param>
         /// <param name="radius">Maximum distance travelled from the grazing centre.</param>
         /// <param name="speed">Walking speed in metres per second.</param>
-        static void CreateWanderingAnimal(string name, string file, Vector3 position, float height, float radius, float speed)
+        static GameObject CreateWanderingAnimal(string name, string file, Vector3 position, float height, float radius, float speed)
         {
             // The clips key the model root's own position, rotation and scale, so placement and
             // size live on a holder and the animation only ever moves the model inside it.
@@ -1695,7 +2261,7 @@ namespace DevGames.Editor
             if (animal == null)
             {
                 Object.DestroyImmediate(holder);
-                return;
+                return null;
             }
             var imported = AssetDatabase.LoadAssetAtPath<GameObject>(Animals + file).transform;
             holder.transform.localScale = Vector3.one * (animal.transform.localScale.x / Mathf.Abs(imported.localScale.x));
@@ -1710,6 +2276,7 @@ namespace DevGames.Editor
             // Quaternius sheep, pig, llama and pug have no walk cycle: they graze in place
             // instead of sliding around in their idle pose.
             holder.AddComponent<AnimalWander>().Configure(position, canWalk ? radius : 0f, speed);
+            return holder;
         }
 
         /// <summary>
@@ -1767,27 +2334,64 @@ namespace DevGames.Editor
             return controller;
         }
 
+        /// <summary>Adiciona gaviões voando sobre a fazenda.</summary>
         static void CreateBirdFlock()
         {
             var flock = new GameObject("Bando de Passaros");
             var centers = new[]
             {
-                new Vector3(0f, 18f, 34f),
-                new Vector3(-8f, 45f, 80f),
-                new Vector3(10f, 70f, 120f)
+                // Hawks circle the Only Up tower at the barn, silo and mill heights.
+                new Vector3(4f, 22f, 28f),
+                new Vector3(-6f, 46f, 22f),
+                new Vector3(8f, 72f, 10f)
             };
+            var flap = BirdController();
 
             for (var i = 0; i < 7; i++)
             {
-                var bird = new GameObject($"Passaro {i + 1}");
+                var bird = new GameObject($"Gaviao {i + 1}");
                 bird.transform.SetParent(flock.transform);
                 bird.AddComponent<BirdFlight>().Configure(
-                    centers[i % centers.Length], 7f + i * 1.3f, 7f + i * 0.8f, i * 0.85f);
-                CreateModel(BirdModel, "Modelo", bird.transform, Vector3.zero,
-                    Quaternion.Euler(0f, 90f, 0f), 1.15f + i % 3 * 0.12f, false);
+                    centers[i % centers.Length], 9f + i * 1.3f, 7f + i * 0.8f, i * 0.85f);
+                var model = CreateModel(BirdModel, "Modelo", bird.transform, Vector3.zero, Quaternion.identity, 0.7f + i % 3 * 0.1f, false);
+                if (model == null) continue;
+
+                // Turn the beak to +Z, the direction BirdFlight flies in, whatever axes the export used.
+                var head = model.GetComponentsInChildren<Transform>().FirstOrDefault(t => t.name == "head");
+                var beak = model.GetComponentsInChildren<Transform>().FirstOrDefault(t => t.name == "beak.001.T");
+                if (head != null && beak != null)
+                {
+                    var look = Vector3.ProjectOnPlane(beak.position - head.position, Vector3.up);
+                    if (look.sqrMagnitude > 0.0001f) model.transform.rotation = Quaternion.FromToRotation(look, Vector3.forward) * model.transform.rotation;
+                }
+
+                var animator = model.GetComponent<Animator>();
+                if (animator == null) animator = model.AddComponent<Animator>();
+                animator.runtimeAnimatorController = flap;
+                animator.applyRootMotion = false;
+                animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
             }
         }
 
+        /// <summary>One looping state with the hawk's wing flap, shared by the whole flock.</summary>
+        static RuntimeAnimatorController BirdController()
+        {
+            const string path = Root + "/Settings/Animals/Hawk.controller";
+            var existing = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+            if (existing != null) return existing;
+            if (!AssetDatabase.IsValidFolder(Root + "/Settings/Animals")) AssetDatabase.CreateFolder(Root + "/Settings", "Animals");
+            var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            var fly = controller.layers[0].stateMachine.AddState("Fly");
+            fly.motion = AssetDatabase.LoadAllAssetsAtPath(BirdModel).OfType<AnimationClip>().FirstOrDefault(clip => !clip.name.StartsWith("__preview__"));
+            fly.speed = 1.2f;
+            return controller;
+        }
+
+        /// <summary>Cria a interface da fase: cronômetro, dicas, menu de pausa (com Reiniciar fase) e painel de conclusão.</summary>
+        /// <param name="input">Leitor de teclado.</param>
+        /// <param name="respawn">Componente de volta ao início.</param>
+        /// <returns>O HUD criado.</returns>
+        /// <remarks>Os botões são ligados aos métodos de PauseMenu e CompletionPanel com listeners persistentes.</remarks>
         static GameplayHUD CreateGameplayUI(InputReader input, PlayerRespawn respawn)
         {
             var canvas = CreateCanvas("Gameplay Canvas");
@@ -1809,11 +2413,13 @@ namespace DevGames.Editor
             var pausePanel = CreatePanel(canvas.transform, "Pause Panel", new Color(0.03f, 0.04f, 0.04f, 0.94f));
             CreateText(pausePanel.transform, "Pause Title", "PAUSADO", 40, new Vector2(0.5f, 0.72f), new Vector2(500f, 80f), TextAnchor.MiddleCenter, Color.white);
             var pause = canvas.gameObject.AddComponent<PauseMenu>();
-            var resume = CreateButton(pausePanel.transform, "Resume", "CONTINUAR", new Vector2(0.5f, 0.53f));
-            var restart = CreateButton(pausePanel.transform, "Restart", "VOLTAR AO INÍCIO", new Vector2(0.5f, 0.41f));
-            var menu = CreateButton(pausePanel.transform, "Menu", "MENU PRINCIPAL", new Vector2(0.5f, 0.29f));
+            var resume = CreateButton(pausePanel.transform, "Resume", "CONTINUAR", new Vector2(0.5f, 0.57f));
+            var restart = CreateButton(pausePanel.transform, "Restart", "VOLTAR AO INÍCIO", new Vector2(0.5f, 0.46f));
+            var restartLevel = CreateButton(pausePanel.transform, "Restart Level", "REINICIAR FASE", new Vector2(0.5f, 0.35f));
+            var menu = CreateButton(pausePanel.transform, "Menu", "MENU PRINCIPAL", new Vector2(0.5f, 0.24f));
             UnityEventTools.AddPersistentListener(resume.onClick, pause.Resume);
             UnityEventTools.AddPersistentListener(restart.onClick, pause.RestartPosition);
+            UnityEventTools.AddPersistentListener(restartLevel.onClick, pause.RestartLevel);
             UnityEventTools.AddPersistentListener(menu.onClick, pause.MainMenu);
             pause.Configure(input, pausePanel, respawn);
 
@@ -1828,6 +2434,8 @@ namespace DevGames.Editor
             return hud;
         }
 
+        /// <summary>Cria as áreas de tutorial que mostram dicas ao jogador.</summary>
+        /// <param name="hud">HUD que exibe as mensagens.</param>
         static void CreateTutorials(GameplayHUD hud)
         {
             CreateTutorialTrigger(new Vector3(0f, 1f, 2f), new Vector3(8f, 3f, 5f), hud, "WASD para mover  •  Mouse para olhar  •  Espaço para pular");
@@ -1836,6 +2444,8 @@ namespace DevGames.Editor
             CreateTutorialTrigger(new Vector3(0f, 2f, -5f), new Vector3(10f, 4f, 5f), hud, "R retorna ao início sem reiniciar o cronômetro");
         }
 
+        /// <summary>Cria o objetivo da fase (o dedo) com luz e collider trigger.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
         static void CreateGoal(Dictionary<string, Material> materials)
         {
             var goal = new GameObject("Primeiro Dedo");
@@ -1858,6 +2468,114 @@ namespace DevGames.Editor
             light.intensity = 4f;
         }
 
+        /// <summary>Cria a decoração física do pátio (vetor de prefabs + spawner), a fumaça do trator e o balde do poço.</summary>
+        /// <param name="materials">Materiais do projeto (não usados aqui, mantidos pela assinatura do gerador).</param>
+        /// <remarks>
+        /// Nada disso fica na rota: os objetos caem uma vez ao lado do galpão de máquinas e viram uma pilha;
+        /// a fumaça sai do trator parado; o balde sobe e desce no poço com Translate.
+        /// Roda depois de MakePropsSolid para que os objetos físicos mantenham só o próprio collider.
+        /// </remarks>
+        static void CreateSkillChallenge(Dictionary<string, Material> materials)
+        {
+            var prefabs = new[]
+            {
+                CreateLoosePropPrefab("Caixa Solta", FarmProps + "Crate.fbx", 0.9f),
+                CreateLoosePropPrefab("Feno Solto", CozyFarm + "haystackcube.fbx", 0.8f),
+                CreateLoosePropPrefab("Barril Solto", FarmProps + "Barrel.fbx", 1f)
+            };
+            var spawner = new GameObject("Patio - Spawner de Objetos").AddComponent<SkillChallengeSpawner>();
+            // Beside the machine shed, behind and left of the start: off the route, inside the left road fence.
+            var positions = new[] { new Vector3(-10f, 5f, -9f), new Vector3(-8.5f, 5f, -7.5f), new Vector3(-9.5f, 6f, -6.5f), new Vector3(-8f, 6f, -9f) };
+            var points = new Transform[positions.Length];
+            for (var i = 0; i < positions.Length; i++)
+            {
+                points[i] = new GameObject($"Ponto de Spawn {i + 1}").transform;
+                points[i].SetParent(spawner.transform, false);
+                points[i].position = positions[i];
+            }
+            spawner.Configure(prefabs, points);
+
+            var tractor = GameObject.Find("Trator");
+            if (tractor != null)
+            {
+                var top = RendererBounds(tractor);
+                CreateSmoke("Fumaca do Trator", new Vector3(top.center.x, top.max.y - 0.2f, top.center.z));
+            }
+
+            var well = GameObject.Find("Poco");
+            if (well != null)
+            {
+                var bounds = RendererBounds(well);
+                var bucket = CreateModel(CozyFarm + "bucketwooden.fbx", "Balde da Corda do Poco", null,
+                    new Vector3(bounds.center.x, bounds.min.y + 0.5f, bounds.center.z), Quaternion.identity, 0.35f, false);
+                if (bucket != null) bucket.AddComponent<MovingPlatform>().Configure(Vector3.up * 1.2f, 6f);
+            }
+        }
+
+        /// <summary>Gera (ou sobrescreve) o prefab de um objeto solto em Prefabs/Decoracao.</summary>
+        /// <param name="name">Nome do prefab e do arquivo.</param>
+        /// <param name="modelPath">FBX usado como visual.</param>
+        /// <param name="height">Altura final do objeto em metros.</param>
+        /// <returns>O prefab salvo no projeto.</returns>
+        /// <remarks>Monta visual + BoxCollider do tamanho do modelo + Rigidbody com a tag "Empurravel", salva e apaga a cópia temporária.</remarks>
+        static GameObject CreateLoosePropPrefab(string name, string modelPath, float height)
+        {
+            var root = new GameObject(name) { tag = PlayerPusher.PushableTag };
+            if (CreateModel(modelPath, "Visual", root.transform, Vector3.zero, Quaternion.identity, height, false) == null)
+                CreateVisual(PrimitiveType.Cube, "Visual", root.transform, Vector3.up * height * 0.5f, Vector3.one * height, null);
+
+            var bounds = RendererBounds(root);
+            var box = root.AddComponent<BoxCollider>();
+            box.center = bounds.center;
+            box.size = bounds.size;
+            root.AddComponent<Rigidbody>().mass = 4f;
+
+            System.IO.Directory.CreateDirectory(LoosePropPrefabRoot);
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, $"{LoosePropPrefabRoot}/{name}.prefab");
+            Object.DestroyImmediate(root);
+            return prefab;
+        }
+
+        /// <summary>Cria uma coluna de fumaça contínua (ParticleSystem salvo na cena).</summary>
+        /// <param name="name">Nome do objeto.</param>
+        /// <param name="position">Ponto de onde a fumaça sai.</param>
+        /// <remarks>Partículas cinza que sobem devagar, crescem e somem; usa o material de partícula padrão do URP.</remarks>
+        static void CreateSmoke(string name, Vector3 position)
+        {
+            var go = new GameObject(name);
+            go.transform.SetPositionAndRotation(position, Quaternion.Euler(-90f, 0f, 0f));
+            var particles = go.AddComponent<ParticleSystem>();
+            var main = particles.main;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(2f, 3.5f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.4f, 0.9f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.5f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.55f, 0.55f, 0.55f, 0.55f), new Color(0.35f, 0.35f, 0.35f, 0.4f));
+            main.gravityModifier = -0.03f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            var emission = particles.emission;
+            emission.rateOverTime = 6f;
+            var shape = particles.shape;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 8f;
+            shape.radius = 0.05f;
+            var size = particles.sizeOverLifetime;
+            size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 2.2f));
+            var color = particles.colorOverLifetime;
+            color.enabled = true;
+            var fade = new Gradient();
+            fade.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.15f), new GradientAlphaKey(0f, 1f) });
+            color.color = fade;
+            go.GetComponent<ParticleSystemRenderer>().sharedMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>("Packages/com.unity.render-pipelines.universal/Runtime/Materials/ParticlesUnlit.mat");
+        }
+
+        /// <summary>Cria uma área invisível que mostra uma dica.</summary>
+        /// <param name="position">Centro da área.</param>
+        /// <param name="size">Tamanho da área.</param>
+        /// <param name="hud">HUD que exibe a dica.</param>
+        /// <param name="message">Texto da dica.</param>
         static void CreateTutorialTrigger(Vector3 position, Vector3 size, GameplayHUD hud, string message)
         {
             var go = new GameObject("Tutorial " + message.Split(' ')[0]);
@@ -1868,6 +2586,9 @@ namespace DevGames.Editor
             go.AddComponent<TutorialTrigger>().Configure(hud, message);
         }
 
+        /// <summary>Cria uma área que registra o tempo parcial de um setor.</summary>
+        /// <param name="position">Centro da área.</param>
+        /// <param name="sectorName">Nome do setor.</param>
         static void CreateSplitTrigger(Vector3 position, string sectorName)
         {
             var go = new GameObject(sectorName + " Split");
@@ -1879,17 +2600,89 @@ namespace DevGames.Editor
             SetString(split, "sectorName", sectorName);
         }
 
-        static void CreateSun()
+        /// <summary>Cria a luz direcional do sol.</summary>
+        /// <returns>A Light criada.</returns>
+        static Light CreateSun()
         {
             var sun = new GameObject("Sun");
-            sun.transform.rotation = Quaternion.Euler(42f, -32f, 0f);
+            // Late afternoon: low enough for long golden shadows, still bright for platforming.
+            sun.transform.rotation = Quaternion.Euler(34f, -32f, 0f);
             var light = sun.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.color = new Color(1f, 0.78f, 0.58f);
-            light.intensity = 1.25f;
+            light.color = new Color(1f, 0.8f, 0.6f);
+            light.intensity = 1.3f;
             light.shadows = LightShadows.Soft;
+            return light;
         }
 
+        /// <summary>
+        /// Afternoon sky for the farm: procedural skybox with a visible sun disc, three-tone ambient light,
+        /// soft horizon fog, a slowly drifting ring of clouds around the course and a sea of clouds
+        /// below the floating field.
+        /// </summary>
+        static void CreateSky(Light sun)
+        {
+            var path = $"{MaterialRoot}/FarmSky.mat";
+            var sky = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (sky == null)
+            {
+                sky = new Material(Shader.Find("Skybox/Procedural"));
+                AssetDatabase.CreateAsset(sky, path);
+            }
+            sky.SetFloat("_SunDisk", 2f);
+            sky.SetFloat("_SunSize", 0.05f);
+            sky.SetFloat("_SunSizeConvergence", 4f);
+            sky.SetFloat("_AtmosphereThickness", 0.8f);
+            sky.SetColor("_SkyTint", new Color(0.42f, 0.6f, 0.9f));
+            sky.SetColor("_GroundColor", new Color(0.62f, 0.66f, 0.68f));
+            sky.SetFloat("_Exposure", 1.2f);
+            EditorUtility.SetDirty(sky);
+
+            RenderSettings.skybox = sky;
+            RenderSettings.sun = sun;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.6f, 0.7f, 0.86f);
+            RenderSettings.ambientEquatorColor = new Color(0.66f, 0.62f, 0.54f);
+            RenderSettings.ambientGroundColor = new Color(0.3f, 0.27f, 0.22f);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = new Color(0.72f, 0.8f, 0.86f);
+            RenderSettings.fogDensity = 0.0045f;
+
+            // Ring of clouds around the climb, at every height it passes; the ring turns very slowly.
+            var random = new System.Random(7);
+            var center = new Vector3(FieldIsland.center.x, 0f, FieldIsland.center.y);
+            var ring = new GameObject("Ceu - Nuvens").transform;
+            ring.position = center;
+            ring.gameObject.AddComponent<WindmillRotor>().Configure(0.6f, Vector3.up);
+            for (var i = 0; i < 30; i++)
+            {
+                var angle = i * 12f + random.Next(-4, 5);
+                var spot = OnCircle(new Vector2(center.x, center.z), 75f + random.Next(0, 60), angle, 10f + random.Next(0, 90));
+                Cloud(ring, $"Nuvem {i + 1}", spot, 5f + random.Next(0, 9), random.Next(360), false);
+            }
+
+            // Sea of clouds under the field: the farm is an island floating above them.
+            var sea = new GameObject("Ceu - Mar de Nuvens").transform;
+            for (var i = 0; i < 18; i++)
+            {
+                var spot = OnCircle(new Vector2(center.x, center.z), 10f + random.Next(0, 90), i * 20f + random.Next(0, 15), -14f - random.Next(0, 16));
+                Cloud(sea, $"Nuvem Baixa {i + 1}", spot, 9f + random.Next(0, 8), random.Next(360), true);
+            }
+        }
+
+        /// <summary>One decorative cloud: no shadows, so it never darkens the course. Moving clouds must not be static.</summary>
+        static void Cloud(Transform parent, string name, Vector3 position, float height, float yaw, bool isStatic)
+        {
+            var cloud = CreateModel(IslandPack + "Cloud.fbx", name, parent, parent.InverseTransformPoint(position), Quaternion.Euler(0f, yaw, 0f), height, isStatic);
+            if (cloud == null) return;
+            foreach (var renderer in cloud.GetComponentsInChildren<Renderer>())
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        /// <summary>Cria um cenário simples de fundo para menus.</summary>
+        /// <param name="materials">Dicionário de materiais do projeto, indexado pelo nome.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
         static void CreateMenuBackdrop(Dictionary<string, Material> materials, string name)
         {
             CreateSun();
@@ -1903,6 +2696,9 @@ namespace DevGames.Editor
             CreateBlock("Roof", new Vector3(0f, 5f, 7f), new Vector3(20f, 1.4f, 3f), materials["Roof"], "Ground");
         }
 
+        /// <summary>Cria um Canvas de UI com EventSystem.</summary>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <returns>O Canvas criado.</returns>
         static Canvas CreateCanvas(string name)
         {
             var go = new GameObject(name, typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -1918,6 +2714,16 @@ namespace DevGames.Editor
             return canvas;
         }
 
+        /// <summary>Cria um texto de UI.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="value">Texto exibido.</param>
+        /// <param name="size">Tamanho da fonte.</param>
+        /// <param name="anchor">Âncora (0-1).</param>
+        /// <param name="dimensions">Largura e altura.</param>
+        /// <param name="alignment">Alinhamento.</param>
+        /// <param name="color">Cor do texto.</param>
+        /// <returns>O Text criado.</returns>
         static Text CreateText(Transform parent, string name, string value, int size, Vector2 anchor, Vector2 dimensions, TextAnchor alignment, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Text));
@@ -1950,6 +2756,11 @@ namespace DevGames.Editor
             return button;
         }
 
+        /// <summary>Cria um painel de UI que cobre a tela inteira.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="color">Cor de fundo.</param>
+        /// <returns>O painel criado.</returns>
         static GameObject CreatePanel(Transform parent, string name, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
@@ -1962,6 +2773,13 @@ namespace DevGames.Editor
             return go;
         }
 
+        /// <summary>Cria um cubo sólido (com collider) em uma layer.</summary>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="position">Centro.</param>
+        /// <param name="scale">Tamanho.</param>
+        /// <param name="material">Material.</param>
+        /// <param name="layer">Nome da layer.</param>
+        /// <returns>O cubo criado.</returns>
         static GameObject CreateBlock(string name, Vector3 position, Vector3 scale, Material material, string layer)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -1974,6 +2792,14 @@ namespace DevGames.Editor
             return go;
         }
 
+        /// <summary>Cria uma primitiva só visual (sem collider).</summary>
+        /// <param name="type">Tipo de primitiva.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="parent">Pai (ou null).</param>
+        /// <param name="position">Posição local (ou do mundo sem pai).</param>
+        /// <param name="scale">Escala.</param>
+        /// <param name="material">Material.</param>
+        /// <returns>O objeto criado.</returns>
         static GameObject CreateVisual(PrimitiveType type, string name, Transform parent, Vector3 position, Vector3 scale, Material material)
         {
             var go = GameObject.CreatePrimitive(type);
@@ -1990,6 +2816,16 @@ namespace DevGames.Editor
             return go;
         }
 
+        /// <summary>Instancia um modelo FBX ajustado a uma altura e apoiado num ponto.</summary>
+        /// <param name="path">Caminho do FBX.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="parent">Pai (ou null).</param>
+        /// <param name="bottomCenter">Ponto onde a base do modelo fica.</param>
+        /// <param name="rotation">Rotação.</param>
+        /// <param name="targetHeight">Altura final em metros.</param>
+        /// <param name="makeStatic">True para marcar como estático.</param>
+        /// <returns>O modelo, ou null se o arquivo não existir.</returns>
+        /// <remarks>Remove colliders do FBX, escala pela altura dos bounds e reposiciona a base no ponto pedido.</remarks>
         static GameObject CreateModel(string path, string name, Transform parent, Vector3 bottomCenter, Quaternion rotation, float targetHeight, bool makeStatic)
         {
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
@@ -2040,17 +2876,24 @@ namespace DevGames.Editor
             return instance;
         }
 
+        /// <summary>Liga ou desliga todos os renderers de um objeto.</summary>
+        /// <param name="root">Objeto.</param>
+        /// <param name="visible">True para mostrar.</param>
         static void SetVisible(GameObject root, bool visible)
         {
             foreach (var renderer in root.GetComponentsInChildren<Renderer>(true)) renderer.enabled = visible;
         }
 
+        /// <summary>Marca a cena como alterada e salva no caminho dado.</summary>
+        /// <param name="scene">Cena aberta.</param>
+        /// <param name="path">Caminho do arquivo .unity.</param>
         static void SaveScene(Scene scene, string path)
         {
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, path);
         }
 
+        /// <summary>Registra as cenas no Build Settings na ordem Bootstrap, MainMenu, LevelSelect, Farm.</summary>
         static void ConfigureBuildSettings()
         {
             EditorBuildSettings.scenes = new[]
@@ -2062,6 +2905,10 @@ namespace DevGames.Editor
             };
         }
 
+        /// <summary>Preenche um campo serializado privado que referencia um objeto.</summary>
+        /// <param name="target">Componente alvo.</param>
+        /// <param name="propertyName">Nome do campo.</param>
+        /// <param name="value">Objeto atribuído.</param>
         static void SetObjectReference(Object target, string propertyName, Object value)
         {
             var serialized = new SerializedObject(target);
@@ -2069,6 +2916,10 @@ namespace DevGames.Editor
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        /// <summary>Preenche um campo serializado privado de texto.</summary>
+        /// <param name="target">Componente alvo.</param>
+        /// <param name="propertyName">Nome do campo.</param>
+        /// <param name="value">Texto atribuído.</param>
         static void SetString(Object target, string propertyName, string value)
         {
             var serialized = new SerializedObject(target);

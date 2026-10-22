@@ -9,11 +9,17 @@ namespace DevGames.Player
         static readonly int GroundedHash = Animator.StringToHash("Grounded");
         static readonly int HangingHash = Animator.StringToHash("Hanging");
         static readonly int ClimbingHash = Animator.StringToHash("Climbing");
+        static readonly int HardLandHash = Animator.StringToHash("HardLand");
         static readonly int LocomotionStateHash = Animator.StringToHash("Base Layer.Locomotion");
 
         [SerializeField] PlayerMotor motor;
         [SerializeField] Animator animator;
         [SerializeField, Min(0f)] float locomotionDamping = 0.12f;
+        [Tooltip("Falling faster than this (m/s) lands with the heavy crouch: about a 4.5 m drop.")]
+        [SerializeField, Min(0f)] float hardLandingSpeed = 15f;
+
+        float fallPeak;
+        bool wasGrounded = true;
 
         /// <summary>
         /// Updates the animation parameters from the current movement state. The speed
@@ -27,7 +33,25 @@ namespace DevGames.Player
             animator.SetBool(GroundedHash, motor.State == PlayerMotor.MovementState.Grounded);
             animator.SetBool(HangingHash, motor.State == PlayerMotor.MovementState.Hanging);
             animator.SetBool(ClimbingHash, motor.State == PlayerMotor.MovementState.Climbing);
+            TrackHardLanding();
             KeepLocomotionPlaying();
+        }
+
+        /// <summary>
+        /// Remembers the fastest fall of the current airtime and fires HardLand on touch-down when it
+        /// was a big drop. The trigger lives for one frame only, so a stale one never fires later.
+        /// </summary>
+        void TrackHardLanding()
+        {
+            animator.ResetTrigger(HardLandHash);
+            var grounded = motor.State == PlayerMotor.MovementState.Grounded;
+            if (!grounded) fallPeak = Mathf.Min(fallPeak, motor.VerticalSpeed);
+            else
+            {
+                if (!wasGrounded && fallPeak < -hardLandingSpeed) animator.SetTrigger(HardLandHash);
+                fallPeak = 0f;
+            }
+            wasGrounded = grounded;
         }
 
         /// <summary>

@@ -11,6 +11,23 @@ namespace DevGames.Tests
             => Assert.DoesNotThrow(() => FarmProjectBuilder.ValidateRoute(FarmProjectBuilder.CourseRoute()));
 
         [Test]
+        public void CourseRoute_EveryPointIsAboveTheField()
+        {
+            // Only Up: a fall from anywhere on the course lands on the farm, never in the void.
+            var field = FarmProjectBuilder.FieldIsland;
+            foreach (var (name, points) in FarmProjectBuilder.CourseRoute())
+                foreach (var point in points)
+                    Assert.That(field.Contains(new Vector2(point.x, point.z)), $"{name}: {point} fora do campo");
+        }
+
+        [Test]
+        public void RouteModels_AllExistInProject()
+        {
+            foreach (var path in FarmProjectBuilder.RouteModelPaths())
+                Assert.That(UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(path), Is.Not.Null, path);
+        }
+
+        [Test]
         public void CourseRoute_EndsHigherThanItStarts()
         {
             var route = FarmProjectBuilder.CourseRoute();

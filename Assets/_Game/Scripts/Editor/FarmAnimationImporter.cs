@@ -16,7 +16,7 @@ namespace DevGames.Editor
         const string AnimationLibraryPath =
             "Assets/_Game/ThirdParty/Quaternius/UniversalAnimations/UAL1_Standard.fbx";
         const string CharacterModelPath =
-            "Assets/_Game/ThirdParty/Quaternius/UniversalCharacter/Models/MaleCharacter.fbx";
+            "Assets/_Game/ThirdParty/Mixamo/Character.fbx";
 
         /// <summary>
         /// Reimports the locomotion clips as loops and assigns the character's valid
@@ -80,7 +80,8 @@ namespace DevGames.Editor
                 var name = clips[index].name;
                 if (!name.Contains("Idle_Loop") &&
                     !name.Contains("Walk_Loop") &&
-                    !name.Contains("Sprint_Loop")) continue;
+                    !name.Contains("Sprint_Loop") &&
+                    !name.Contains("Jump_Loop")) continue;
 
                 clips[index].loopTime = true;
                 clips[index].loopPose = true;

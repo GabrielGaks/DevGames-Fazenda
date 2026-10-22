@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace DevGames.Player
 {
+    /// <summary>Movimento do jogador: andar, correr, pular, gravidade, escalada e plataformas móveis.</summary>
     [RequireComponent(typeof(CharacterController), typeof(LedgeClimber))]
     public sealed class PlayerMotor : MonoBehaviour
     {
@@ -11,7 +12,8 @@ namespace DevGames.Player
 
         [SerializeField] InputReader input;
         [SerializeField] Transform cameraTransform;
-        [SerializeField, Min(0f)] float walkSpeed = 4.5f;
+        [Tooltip("W alone walks; Shift runs at sprintSpeed (the long jumps of the course need the run).")]
+        [SerializeField, Min(0f)] float walkSpeed = 1.8f;
         [SerializeField, Min(0f)] float sprintSpeed = 7f;
         [SerializeField, Min(0f)] float acceleration = 25f;
         [SerializeField, Range(0f, 1f)] float airControl = 0.35f;
@@ -27,17 +29,25 @@ namespace DevGames.Player
         float lastGroundedTime = float.NegativeInfinity;
         float lastJumpPressedTime = float.NegativeInfinity;
 
+        /// <summary>Estado atual (no chão, no ar, pendurado, subindo) — usado pelas animações.</summary>
         public MovementState State { get; private set; }
+        /// <summary>Velocidade horizontal em m/s (parado → andando → correndo).</summary>
         public float HorizontalSpeed => horizontalVelocity.magnitude;
+        /// <summary>Velocidade vertical em m/s (positiva subindo, negativa caindo).</summary>
         public float VerticalSpeed => verticalVelocity;
+        /// <summary>True quando o jogador corre (Shift + direção).</summary>
         public bool IsSprinting => input != null && input.SprintHeld && input.Move.sqrMagnitude > 0.01f;
 
+        /// <summary>Liga teclado e câmera (usado pelo gerador da cena).</summary>
+        /// <param name="inputReader">Leitor de teclado/mouse.</param>
+        /// <param name="gameplayCamera">Câmera usada como referência de "frente".</param>
         public void Configure(InputReader inputReader, Transform gameplayCamera)
         {
             input = inputReader;
             cameraTransform = gameplayCamera;
         }
 
+        /// <summary>Busca o CharacterController e o LedgeClimber e os conecta.</summary>
         void Awake()
         {
             controller = GetComponent<CharacterController>();
@@ -45,6 +55,13 @@ namespace DevGames.Player
             ledge.Initialize(controller);
         }
 
+        /// <summary>Calcula e aplica o movimento do quadro.</summary>
+        /// <remarks>
+        /// 1) se pendurado/subindo, delega ao LedgeClimber; 2) no ar, tenta agarrar borda;
+        /// 3) converte WASD em direção relativa à câmera e acelera até a velocidade de andar/correr;
+        /// 4) gira o corpo para a direção; 5) pulo com coyote time e buffer; 6) gravidade;
+        /// 7) CharacterController.Move somando o deslocamento da plataforma móvel.
+        /// </remarks>
         void Update()
         {
             if (input == null || cameraTransform == null) return;
@@ -93,6 +110,9 @@ namespace DevGames.Player
             State = controller.isGrounded ? MovementState.Grounded : MovementState.Airborne;
         }
 
+        /// <summary>Descobre se o jogador está sobre uma plataforma móvel.</summary>
+        /// <returns>Deslocamento da plataforma neste quadro, ou zero.</returns>
+        /// <remarks>Raio curto para baixo; se acertar um MovingPlatform, devolve o Delta dela.</remarks>
         Vector3 FindPlatformDelta()
         {
             if (!controller.isGrounded) return Vector3.zero;
@@ -101,6 +121,7 @@ namespace DevGames.Player
                 && hit.collider.TryGetComponent<MovingPlatform>(out var platform) ? platform.Delta : Vector3.zero;
         }
 
+        /// <summary>Zera velocidades e cancela a escalada (usado ao voltar ao início).</summary>
         public void ResetMotion()
         {
             horizontalVelocity = Vector3.zero;

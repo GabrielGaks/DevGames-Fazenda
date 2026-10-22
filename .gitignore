@@ -31,9 +31,5 @@ AGENTS.md
 .collabignore
 
 # Floating Isle (Fox Dev): licença proíbe redistribuir — baixar em https://foxdevart.itch.io/floating-isle
-Assets/_Game/ThirdParty/FoxDev/
-Assets/_Game/ThirdParty/FoxDev.meta
 
 # 3D Low Poly Island (whitebird): página só fala em uso comercial, sem permitir redistribuição — baixar em https://whitebird.itch.io/3d-low-poly-island-
-Assets/_Game/ThirdParty/Whitebird/
-Assets/_Game/ThirdParty/Whitebird.meta

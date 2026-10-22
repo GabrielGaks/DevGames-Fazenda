@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace DevGames.Player
 {
+    /// <summary>Câmera em terceira pessoa que orbita o jogador com o mouse e não atravessa paredes.</summary>
     public sealed class ThirdPersonCamera : MonoBehaviour
     {
         [SerializeField] Transform target;
@@ -17,12 +18,24 @@ namespace DevGames.Player
         float pitch = 18f;
         Vector3 velocity;
 
+        /// <summary>Define quem a câmera segue e de onde lê o mouse (usado pelo gerador da cena).</summary>
+        /// <param name="followTarget">Transform do jogador.</param>
+        /// <param name="inputReader">Leitor de teclado/mouse.</param>
         public void Configure(Transform followTarget, InputReader inputReader)
         {
             target = followTarget;
             input = inputReader;
         }
 
+        /// <summary>Trava o cursor ao entrar na fase (os menus o deixam livre).</summary>
+        void Start() => input?.SetGameplayCursor(true);
+
+        /// <summary>Posiciona a câmera depois que o jogador já se moveu no quadro.</summary>
+        /// <remarks>
+        /// 1) soma o mouse aos ângulos yaw/pitch (pitch limitado);
+        /// 2) calcula a direção atrás do jogador; 3) SphereCast encurta a distância se houver obstáculo;
+        /// 4) SmoothDamp suaviza a posição e a rotação é aplicada.
+        /// </remarks>
         void LateUpdate()
         {
             if (target == null || input == null) return;
@@ -44,4 +57,3 @@ namespace DevGames.Player
         }
     }
 }
-

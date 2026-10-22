@@ -1,9 +1,9 @@
 using DevGames.Core;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace DevGames.Player
 {
+    /// <summary>Devolve o jogador ao início se ele cair no vazio ou apertar R.</summary>
     [RequireComponent(typeof(CharacterController), typeof(PlayerMotor))]
     public sealed class PlayerRespawn : MonoBehaviour
     {
@@ -14,8 +14,11 @@ namespace DevGames.Player
         CharacterController controller;
         PlayerMotor motor;
 
+        /// <summary>Define o leitor de teclado (usado pelo gerador da cena).</summary>
+        /// <param name="inputReader">Leitor de teclado/mouse.</param>
         public void Configure(InputReader inputReader) => input = inputReader;
 
+        /// <summary>Busca os componentes e memoriza a posição/rotação inicial.</summary>
         void Awake()
         {
             controller = GetComponent<CharacterController>();
@@ -24,18 +27,18 @@ namespace DevGames.Player
             spawnRotation = transform.rotation;
         }
 
+        /// <summary>Verifica a cada quadro se precisa voltar ao início.</summary>
+        /// <remarks>Abaixo de <c>voidHeight</c> (caiu no vazio) ou com R pressionado, chama Respawn.</remarks>
         void Update()
         {
-            // Falling off the island into the void restarts the level (timer included);
-            // R only returns to the start and keeps the timer running.
-            if (transform.position.y < voidHeight) SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-            else if (input?.ResetPressed == true) Respawn();
+            if (transform.position.y < voidHeight || input?.ResetPressed == true) Respawn();
         }
 
-        /// <summary>
-        /// Returns the player to the position and rotation captured when the level started.
-        /// The current attempt timer is preserved because the scene is not reloaded.
-        /// </summary>
+        /// <summary>Leva o jogador de volta ao ponto inicial, mantendo o cronômetro.</summary>
+        /// <remarks>
+        /// Zera o movimento, desliga o CharacterController (senão ele bloqueia o teleporte),
+        /// reposiciona e religa.
+        /// </remarks>
         public void Respawn()
         {
             motor.ResetMotion();
@@ -45,4 +48,3 @@ namespace DevGames.Player
         }
     }
 }
-

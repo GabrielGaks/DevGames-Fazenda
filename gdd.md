@@ -484,6 +484,8 @@ O jogador inicia no chão de uma fazenda. Os primeiros saltos são simples. A pr
 
 Conforme sobe, os saltos se tornam mais longos e as plataformas mais estreitas. 
 
+Ambientação física (fora da rota, sem alterar a jogabilidade): ao lado do galpão de máquinas, alguns objetos soltos (caixas, fenos e barris) caem girando no início da fase e formam uma pilha que pode ser empurrada; o trator solta fumaça e o balde do poço sobe e desce. 
+
 Objetivo: encontrar o primeiro dedo. 
 
 ### **5.2. Nível 2 - Cidade** 
@@ -594,13 +596,15 @@ O cronômetro começa quando o jogador entra na fase. Pressionar R não altera o
 
 #### **Menu de pausa** 
 
+Aberto com Esc. 
+
 - Continuar; 
 
-- Reiniciar; 
+- Voltar ao início (reposiciona o jogador sem zerar o cronômetro); 
 
-- Configurações; 
+- Reiniciar fase (recarrega a fase do zero); 
 
-- Voltar ao menu principal. 
+- Menu principal. 
 
 #### **Tela de conclusão** 
 
@@ -789,6 +793,18 @@ A evolução ocorre através do desenvolvimento de habilidades como:
 
 Portanto, a progressão está relacionada diretamente à habilidade adquirida pelo jogador durante a experiência. 
 
+### **10.1. Elementos do tema Skills no Nível 1** 
+
+Cada elemento abaixo existe na fase e exige uma habilidade específica do jogador: 
+
+| # | Elemento no jogo | Habilidade treinada |
+|---|---|---|
+| 1 | Rota de saltos entre props flutuantes, cada vez mais altos | Precisão de salto |
+| 2 | Bordas escaláveis (agarrar e subir) | Coordenação de pulo e escalada |
+| 3 | Corrida com impulso (Shift) para os saltos longos | Controle de velocidade |
+| 4 | Faróis laranja nas estações | Orientação e memorização do percurso |
+| 5 | Cronômetro e melhor tempo salvo | Evolução medida a cada tentativa |
+
 Página 14 
 
 ## **11. Filosofia de Dificuldade** 
@@ -875,3 +891,25 @@ Essa cena cumpre três objetivos:
 
 Página 16 
 
+## **16. Requisitos Técnicos do 1º Bimestre**
+
+Mapa de cada conteúdo dos tutoriais para o ponto do projeto onde ele aparece.
+
+| Requisito | Onde está no jogo | Script / função |
+|---|---|---|
+| Colisão | Jogador empurra os objetos soltos do pátio; objetivo e tutoriais usam triggers | `PlayerPusher.OnControllerColliderHit`, `FingerCollectible.OnTriggerEnter`, `TutorialTrigger.OnTriggerEnter` |
+| Movimentação com Translate | Balde do poço subindo e descendo | `MovingPlatform.Update` |
+| Movimentação com AddForce | Lançamento dos objetos soltos e empurrão do jogador | `SkillChallengeSpawner.Spawn`, `PlayerPusher.OnControllerColliderHit` |
+| Rotação | Pás do moinho, câmera, giro do personagem | `WindmillRotor.Update`, `ThirdPersonCamera.LateUpdate`, `PlayerMotor.Update` |
+| Torque | Objetos soltos caem girando | `SkillChallengeSpawner.Spawn` (AddTorque) |
+| Vetor de prefabs | `GameObject[] prefabs` com Caixa, Feno e Barril soltos (`Assets/_Game/Prefabs/Decoracao`) | `SkillChallengeSpawner` |
+| Randomizar a posição no vetor | `Random.Range` sorteia o índice do prefab e do ponto de spawn | `SkillChallengeSpawner.Spawn` |
+| Spawn de objetos por função | Função dedicada que instancia o objeto | `SkillChallengeSpawner.Spawn` (Instantiate) |
+| Partículas (pedrinhas) | Terra/pedrinhas soltas a cada passo | `PlayerFootsteps.PlayStep` |
+| Fumaça | Fumaça contínua saindo do trator | `FarmProjectBuilder.CreateSmoke` (ParticleSystem na cena) |
+| Som | Passos na terra | `PlayerFootsteps` |
+| Animação (parado, andando, correndo, pulando, caindo) | Blend de locomoção + pulo/queda/aterrissagem + pendurar/subir | `FarmCharacter.controller`, `PlayerAnimator` |
+| Scripts | Todos em `Assets/_Game/Scripts`, documentados função a função | — |
+| UI: texto e botão | Cronômetro, dicas, menus; botão **Reiniciar fase** no pause e **Jogar novamente** no fim | `GameplayHUD`, `PauseMenu.RestartLevel`, `CompletionPanel.Replay` |
+| Tag | `Player` (gatilhos) e `Empurravel` (objetos soltos) | `CompareTag` em `PlayerPusher`, `FingerCollectible`, `TutorialTrigger` |
+| Nível 1 com 70+ assets | Fazenda com mais de 1000 instâncias de modelos de categorias variadas (construções, animais, plantações, props, natureza, ilhas) | Cena `Farm.unity` |

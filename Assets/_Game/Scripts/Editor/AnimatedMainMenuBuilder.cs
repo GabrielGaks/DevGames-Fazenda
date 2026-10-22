@@ -28,10 +28,13 @@ namespace DevGames.Editor
         const string IslandModel = Root + "/ThirdParty/FoxDev/FloatingIsle/Models/FloatingIsleModel.fbx";
         const string Whitebird = Root + "/ThirdParty/Whitebird/LowPolyIsland/Models/";
         const string Version = "MENU_CINEMATICO_V2";
+        static readonly Vector3 CourseStart = new(6f, 0.03f, 5.4f);
 
         static bool queued;
         static bool rebuilding;
 
+        /// <summary>Menu DevGames > Rebuild Cinematic Main Menu: gera a cena do menu principal animado.</summary>
+        /// <remarks>Cria o mundo 3D, o personagem com o percurso de parkour, a interface e salva a cena.</remarks>
         [MenuItem("DevGames/Rebuild Cinematic Main Menu")]
         public static void Rebuild()
         {
@@ -58,6 +61,7 @@ namespace DevGames.Editor
             }
         }
 
+        /// <summary>Ao abrir o editor, passa a verificar se o menu está desatualizado.</summary>
         [InitializeOnLoadMethod]
         static void WatchMenu()
         {
@@ -66,6 +70,7 @@ namespace DevGames.Editor
             QueueIfOutdated();
         }
 
+        /// <summary>Agenda a reconstrução se a cena não tiver o marcador da versão atual.</summary>
         static void QueueIfOutdated()
         {
             if (rebuilding || queued || Application.isBatchMode || IsCurrent()) return;
@@ -74,6 +79,7 @@ namespace DevGames.Editor
             EditorApplication.update += RebuildWhenReady;
         }
 
+        /// <summary>Reconstrói o menu quando o editor não estiver compilando nem em Play Mode.</summary>
         static void RebuildWhenReady()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling) return;
@@ -84,15 +90,17 @@ namespace DevGames.Editor
 
         static bool IsCurrent() => File.Exists(ScenePath) && File.ReadAllText(ScenePath).Contains(Version);
 
+        /// <summary>Cria a cena do menu do zero.</summary>
+        /// <returns>A cena criada.</returns>
         static Scene BuildScene()
         {
             var mode = Application.isBatchMode ? NewSceneMode.Single : NewSceneMode.Additive;
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, mode);
             SceneManager.SetActiveScene(scene);
-            CreateWorld(out var camera, out var character, out var animator);
+            CreateWorld(out var camera, out var character, out var animator, out var coursePoints);
             CreateInterface(out var panel, out var group);
             camera.gameObject.AddComponent<MenuSceneAnimator>().ConfigureCourse(character, animator, camera.transform,
-                panel, group, new Vector3(-5.5f, 0.32f, 5.4f), new Vector3(11.3f, 0.32f, 5.4f));
+                panel, group, coursePoints);
             new GameObject(Version);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -101,7 +109,13 @@ namespace DevGames.Editor
             return scene;
         }
 
-        static void CreateWorld(out Camera camera, out Transform characterRoot, out Animator animator)
+        /// <summary>Monta o cenário 3D do menu: chão, ilhas, aves, câmera e personagem.</summary>
+        /// <param name="camera">Saída: câmera do menu.</param>
+        /// <param name="characterRoot">Saída: raiz do personagem.</param>
+        /// <param name="animator">Saída: Animator do personagem.</param>
+        /// <param name="coursePoints">Saída: pontos de pouso do parkour.</param>
+        static void CreateWorld(out Camera camera, out Transform characterRoot, out Animator animator,
+            out Vector3[] coursePoints)
         {
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.43f, 0.36f, 0.3f);
@@ -118,30 +132,26 @@ namespace DevGames.Editor
 
             camera = new GameObject("Main Camera").AddComponent<Camera>();
             camera.tag = "MainCamera";
-            camera.fieldOfView = 43f;
+            camera.fieldOfView = 48f;
             camera.nearClipPlane = 0.1f;
             camera.farClipPlane = 250f;
             camera.backgroundColor = new Color(0.11f, 0.22f, 0.27f);
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.transform.position = new Vector3(2.2f, 6.2f, -15.8f);
-            camera.transform.rotation = Quaternion.LookRotation(new Vector3(3.2f, 1.2f, 7.2f) - camera.transform.position);
+            camera.transform.position = new Vector3(5.2f, 7.4f, -17.5f);
+            camera.transform.rotation = Quaternion.LookRotation(new Vector3(6.2f, 5f, 7.2f) - camera.transform.position);
             camera.gameObject.AddComponent<AudioListener>();
 
-            CreateIsland(new Vector3(2.8f, 0f, 7.2f), 19f, "Ilha Principal");
+            CreateIsland(new Vector3(6.4f, 0f, 7.2f), 19f, "Ilha Principal");
             CreateIsland(new Vector3(14f, 4.5f, 24f), 7f, "Ilha Distante");
-            CreateModel(FarmBuildings + "SmallBarn.fbx", "Celeiro da Ilha", null, new Vector3(4.8f, 0.05f, 9.6f),
-                Quaternion.Euler(0f, -25f, 0f), 4.2f);
-            CreateModel(Nature + "CommonTree_3.fbx", "Árvore da Ilha", null, new Vector3(-1.8f, 0.05f, 10.2f),
+            CreateModel(FarmBuildings + "SmallBarn.fbx", "Celeiro da Ilha", null, new Vector3(3.8f, 0.05f, 10.5f),
+                Quaternion.Euler(0f, -25f, 0f), 3.6f);
+            CreateModel(Nature + "CommonTree_3.fbx", "Árvore da Ilha", null, new Vector3(0.5f, 0.05f, 11.5f),
                 Quaternion.Euler(0f, 24f, 0f), 4.8f);
 
-            var wood = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Art/Materials/Wood.mat");
-            CreateBlock("Passarela", new Vector3(2.9f, 0.22f, 5.4f), new Vector3(17.5f, 0.18f, 1.7f), wood);
-            CreateModel(FarmProps + "Hay.fbx", "Obstáculo Feno", null, new Vector3(-1.8f, 0.32f, 5.4f),
-                Quaternion.Euler(0f, 12f, 0f), 1.05f);
-            CreateModel(Whitebird + "Crate.fbx", "Obstáculo Caixa", null, new Vector3(1.75f, 0.32f, 5.4f),
-                Quaternion.Euler(0f, -9f, 0f), 1.15f);
-            CreateModel(FarmBuildings + "Fence2.fbx", "Obstáculo Cerca", null, new Vector3(4.9f, 0.32f, 5.4f),
-                Quaternion.Euler(0f, 0f, 0f), 0.92f);
+            coursePoints = CreateParkourCourse();
+            var menuCamera = camera;
+            Debug.Assert(coursePoints.Skip(14).Take(3)
+                .All(point => menuCamera.WorldToViewportPoint(point - Vector3.up * 1.3f).y > 1f));
 
             CreateModel(Whitebird + "Cloud.fbx", "Nuvem Baixa", null, new Vector3(-2f, -3f, 11f), Quaternion.identity, 2.4f);
             CreateModel(Whitebird + "Cloud.fbx", "Nuvem Distante", null, new Vector3(12f, 2f, 27f), Quaternion.identity, 2.8f);
@@ -157,6 +167,76 @@ namespace DevGames.Editor
             animator.applyRootMotion = false;
         }
 
+        static Vector3[] CreateParkourCourse()
+        {
+            var hay = CreateModel(FarmProps + "Hay.fbx", "Parkour 1 - Feno", null,
+                new Vector3(8.5f, 0.35f, 3.8f), Quaternion.Euler(0f, 12f, 0f), 1.25f);
+            var crate = CreateModel(FarmProps + "Crate.fbx", "Parkour 2 - Caixa", null,
+                new Vector3(12f, 1.55f, 3.6f), Quaternion.Euler(0f, -10f, 0f), 1.25f);
+            var barrel = CreateModel(FarmProps + "Barrel.fbx", "Parkour 3 - Barril", null,
+                new Vector3(15f, 2.7f, 5.5f), Quaternion.Euler(0f, 18f, 0f), 1.3f);
+            var bags = CreateModel(FarmProps + "Bags.fbx", "Parkour 4 - Sacos", null,
+                new Vector3(15f, 4f, 8.8f), Quaternion.Euler(0f, -14f, 0f), 1.2f);
+            var cart = CreateModel(FarmProps + "Cart.fbx", "Parkour 5 - Carroca", null,
+                new Vector3(12.3f, 5f, 10.5f), Quaternion.Euler(0f, 36f, 0f), 1.4f);
+            var upperHay = CreateModel(FarmProps + "Hay.fbx", "Parkour 6 - Feno Alto", null,
+                new Vector3(9f, 6.35f, 9.2f), Quaternion.Euler(0f, -18f, 0f), 1.25f);
+            var upperCrate = CreateModel(FarmProps + "Crate.fbx", "Parkour 7 - Caixa Alta", null,
+                new Vector3(8f, 7.55f, 6.3f), Quaternion.Euler(0f, 10f, 0f), 1.25f);
+            var upperBarrel = CreateModel(FarmProps + "Barrel.fbx", "Parkour 8 - Barril Alto", null,
+                new Vector3(10.2f, 8.7f, 4.5f), Quaternion.Euler(0f, -16f, 0f), 1.3f);
+            var upperBags = CreateModel(FarmProps + "Bags.fbx", "Parkour 9 - Sacos Altos", null,
+                new Vector3(13.2f, 10f, 4.2f), Quaternion.Euler(0f, 12f, 0f), 1.2f);
+            var finalHay = CreateModel(FarmProps + "Hay.fbx", "Parkour 10 - Feno do Topo", null,
+                new Vector3(15.2f, 11.15f, 6.5f), Quaternion.Euler(0f, -8f, 0f), 1.25f);
+            var skyCrate = CreateModel(FarmProps + "Crate.fbx", "Parkour 11 - Caixa no Céu", null,
+                new Vector3(15.6f, 12.35f, 9.8f), Quaternion.Euler(0f, 14f, 0f), 1.25f);
+            var skyBarrel = CreateModel(FarmProps + "Barrel.fbx", "Parkour 12 - Barril no Céu", null,
+                new Vector3(13.5f, 13.5f, 11f), Quaternion.Euler(0f, -20f, 0f), 1.3f);
+            var skyBags = CreateModel(FarmProps + "Bags.fbx", "Parkour 13 - Sacos no Céu", null,
+                new Vector3(10.5f, 14.8f, 10.2f), Quaternion.Euler(0f, 8f, 0f), 1.2f);
+            var hiddenHay = CreateModel(FarmProps + "Hay.fbx", "Parkour 14 - Feno Fora da Tela", null,
+                new Vector3(8.5f, 15.95f, 7.5f), Quaternion.Euler(0f, -12f, 0f), 1.25f);
+            var hiddenCrate = CreateModel(FarmProps + "Crate.fbx", "Parkour 15 - Caixa Fora da Tela", null,
+                new Vector3(9.2f, 17.15f, 4.8f), Quaternion.Euler(0f, 18f, 0f), 1.25f);
+            var hiddenBarrel = CreateModel(FarmProps + "Barrel.fbx", "Parkour 16 - Barril Fora da Tela", null,
+                new Vector3(12.2f, 18.3f, 3.7f), Quaternion.Euler(0f, -10f, 0f), 1.3f);
+
+            return new[]
+            {
+                CourseStart,
+                TopPoint(hay, new Vector3(8.5f, 1.6f, 3.8f)),
+                TopPoint(crate, new Vector3(12f, 2.8f, 3.6f)),
+                TopPoint(barrel, new Vector3(15f, 4f, 5.5f)),
+                TopPoint(bags, new Vector3(15f, 5.2f, 8.8f)),
+                TopPoint(cart, new Vector3(12.3f, 6.4f, 10.5f)),
+                TopPoint(upperHay, new Vector3(9f, 7.6f, 9.2f)),
+                TopPoint(upperCrate, new Vector3(8f, 8.8f, 6.3f)),
+                TopPoint(upperBarrel, new Vector3(10.2f, 10f, 4.5f)),
+                TopPoint(upperBags, new Vector3(13.2f, 11.2f, 4.2f)),
+                TopPoint(finalHay, new Vector3(15.2f, 12.4f, 6.5f)),
+                TopPoint(skyCrate, new Vector3(15.6f, 13.6f, 9.8f)),
+                TopPoint(skyBarrel, new Vector3(13.5f, 14.8f, 11f)),
+                TopPoint(skyBags, new Vector3(10.5f, 16f, 10.2f)),
+                TopPoint(hiddenHay, new Vector3(8.5f, 17.2f, 7.5f)),
+                TopPoint(hiddenCrate, new Vector3(9.2f, 18.4f, 4.8f)),
+                TopPoint(hiddenBarrel, new Vector3(12.2f, 19.6f, 3.7f)),
+                new Vector3(15.2f, 20.8f, 5.3f)
+            };
+        }
+
+        static Vector3 TopPoint(GameObject model, Vector3 fallback)
+        {
+            if (model == null) return fallback;
+            var bounds = model.GetComponentsInChildren<Renderer>(true)
+                .Select(renderer => renderer.bounds).Aggregate((result, next) => { result.Encapsulate(next); return result; });
+            return new Vector3(bounds.center.x, bounds.max.y + 0.02f, bounds.center.z);
+        }
+
+        /// <summary>Cria uma pequena ilha flutuante.</summary>
+        /// <param name="topCenter">Centro do topo.</param>
+        /// <param name="scale">Escala.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
         static void CreateIsland(Vector3 topCenter, float scale, string name)
         {
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(IslandModel);
@@ -178,6 +258,7 @@ namespace DevGames.Editor
                 GameObjectUtility.SetStaticEditorFlags(child.gameObject, StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic);
         }
 
+        /// <summary>Adiciona aves voando no fundo do menu.</summary>
         static void CreateBirds()
         {
             var flock = new GameObject("Pássaros ao Fundo").transform;
@@ -191,6 +272,8 @@ namespace DevGames.Editor
             }
         }
 
+        /// <summary>Cria o Animator Controller do personagem do menu (corrida, pulo, queda, aterrissagem).</summary>
+        /// <returns>O controller salvo.</returns>
         static AnimatorController CreateCharacterController()
         {
             const string path = Root + "/Settings/MenuCharacterV2.controller";
@@ -206,6 +289,11 @@ namespace DevGames.Editor
             return controller;
         }
 
+        /// <summary>Adiciona um estado com um clipe de animação ao Animator.</summary>
+        /// <param name="machine">Máquina de estados.</param>
+        /// <param name="name">Nome do estado.</param>
+        /// <param name="clipName">Nome do clipe.</param>
+        /// <returns>O estado criado.</returns>
         static AnimatorState State(AnimatorStateMachine machine, string name, string clipName)
         {
             var state = machine.states.FirstOrDefault(item => item.state.name == name).state ?? machine.AddState(name);
@@ -214,6 +302,9 @@ namespace DevGames.Editor
             return state;
         }
 
+        /// <summary>Cria o Canvas do menu com título e botões Jogar e Sair.</summary>
+        /// <param name="panel">Saída: painel dos botões.</param>
+        /// <param name="group">Saída: CanvasGroup para o fade.</param>
         static void CreateInterface(out RectTransform panel, out CanvasGroup group)
         {
             var canvasObject = new GameObject("Main Menu Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -253,17 +344,36 @@ namespace DevGames.Editor
                 new Vector2(0.01f, 0.39f), new Vector2(0.96f, 0.54f), TextAnchor.MiddleLeft,
                 new Color(0.84f, 0.81f, 0.72f), FontStyle.Normal);
 
-            var play = CreateButton(panel, "Play", "COMEÇAR A AVENTURA", new Vector2(0.01f, 0.22f), new Vector2(0.94f, 0.33f), true);
-            var quit = CreateButton(panel, "Quit", "SAIR", new Vector2(0.01f, 0.105f), new Vector2(0.94f, 0.19f), false);
+            var choices = CreateImage(panel, "Seletor de Opções", new Vector2(0f, 0.075f), new Vector2(0.96f, 0.355f),
+                new Color(0.055f, 0.06f, 0.055f, 0.96f));
+            var outline = choices.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0.64f, 0.46f, 0.24f, 0.42f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            CreateImage(choices.transform, "Linha Superior", new Vector2(0f, 0.975f), Vector2.one,
+                new Color(0.96f, 0.66f, 0.28f, 0.9f));
+            CreateText(choices.transform, "Rótulo", "ESCOLHA UMA AÇÃO", 13, new Vector2(0.045f, 0.79f),
+                new Vector2(0.96f, 0.96f), TextAnchor.MiddleLeft, new Color(0.78f, 0.68f, 0.52f), FontStyle.Bold);
+
+            var play = CreateButton(choices.transform, "Play", "01", "COMEÇAR A AVENTURA",
+                "Avançar para a seleção de fases", new Vector2(0.035f, 0.41f), new Vector2(0.965f, 0.78f), true);
+            var quit = CreateButton(choices.transform, "Quit", "02", "SAIR",
+                "Encerrar a jornada", new Vector2(0.035f, 0.06f), new Vector2(0.965f, 0.36f), false);
             UnityEventTools.AddPersistentListener(play.onClick, controller.LoadLevelSelect);
             UnityEventTools.AddPersistentListener(quit.onClick, controller.Quit);
-            CreateText(panel, "Ajuda", "ENTER / A  selecionar     •     ESC / B  voltar", 14, new Vector2(0.01f, 0f),
-                new Vector2(0.96f, 0.075f), TextAnchor.MiddleLeft, new Color(0.62f, 0.6f, 0.54f), FontStyle.Normal);
+            CreateText(panel, "Ajuda", "↑ ↓  NAVEGAR     ENTER / A  CONFIRMAR     ESC / B  VOLTAR", 12, new Vector2(0f, 0f),
+                new Vector2(0.96f, 0.06f), TextAnchor.MiddleLeft, new Color(0.58f, 0.57f, 0.52f), FontStyle.Normal);
 
             var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule)).GetComponent<EventSystem>();
             eventSystem.firstSelectedGameObject = play.gameObject;
         }
 
+        /// <summary>Cria uma imagem de UI.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="anchorMin">Canto inferior esquerdo (0-1).</param>
+        /// <param name="anchorMax">Canto superior direito (0-1).</param>
+        /// <param name="color">Cor.</param>
+        /// <returns>A Image criada.</returns>
         static Image CreateImage(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Color color)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
@@ -277,6 +387,17 @@ namespace DevGames.Editor
             return image;
         }
 
+        /// <summary>Cria um texto de UI.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="value">Texto.</param>
+        /// <param name="size">Tamanho da fonte.</param>
+        /// <param name="anchorMin">Canto inferior esquerdo (0-1).</param>
+        /// <param name="anchorMax">Canto superior direito (0-1).</param>
+        /// <param name="alignment">Alinhamento.</param>
+        /// <param name="color">Cor.</param>
+        /// <param name="style">Estilo da fonte.</param>
+        /// <returns>O Text criado.</returns>
         static Text CreateText(Transform parent, string name, string value, int size, Vector2 anchorMin, Vector2 anchorMax,
             TextAnchor alignment, Color color, FontStyle style)
         {
@@ -299,37 +420,52 @@ namespace DevGames.Editor
             return text;
         }
 
-        static Button CreateButton(Transform parent, string name, string label, Vector2 anchorMin, Vector2 anchorMax, bool primary)
+        /// <summary>Cria um botão do menu com número, título e subtítulo.</summary>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="index">Número exibido (01, 02).</param>
+        /// <param name="label">Título.</param>
+        /// <param name="subtitle">Subtítulo.</param>
+        /// <param name="anchorMin">Canto inferior esquerdo (0-1).</param>
+        /// <param name="anchorMax">Canto superior direito (0-1).</param>
+        /// <param name="primary">True para o botão de destaque.</param>
+        /// <returns>O Button criado.</returns>
+        static Button CreateButton(Transform parent, string name, string index, string label, string subtitle,
+            Vector2 anchorMin, Vector2 anchorMax, bool primary)
         {
             var image = CreateImage(parent, name, anchorMin, anchorMax,
-                primary ? new Color(0.48f, 0.14f, 0.09f, 0.98f) : new Color(0.13f, 0.14f, 0.13f, 0.92f));
+                primary ? new Color(0.42f, 0.105f, 0.065f, 1f) : new Color(0.095f, 0.105f, 0.095f, 1f));
             var button = image.gameObject.AddComponent<Button>();
             var colors = button.colors;
             colors.normalColor = image.color;
-            colors.highlightedColor = primary ? new Color(0.62f, 0.22f, 0.12f) : new Color(0.24f, 0.23f, 0.19f);
+            colors.highlightedColor = primary ? new Color(0.58f, 0.18f, 0.09f) : new Color(0.2f, 0.2f, 0.16f);
             colors.pressedColor = new Color(0.32f, 0.08f, 0.05f);
             colors.selectedColor = colors.highlightedColor;
             colors.fadeDuration = 0.18f;
             button.colors = colors;
-            if (primary) CreateImage(image.transform, "Acento", new Vector2(0f, 0f), new Vector2(0.012f, 1f), new Color(0.97f, 0.68f, 0.28f));
-            CreateText(image.transform, "Label", label, 20, new Vector2(0.07f, 0f), new Vector2(0.86f, 1f),
-                TextAnchor.MiddleLeft, Color.white, FontStyle.Bold);
-            CreateText(image.transform, "Seta", "›", 34, new Vector2(0.86f, 0f), new Vector2(0.96f, 1f),
+            CreateImage(image.transform, "Acento", Vector2.zero, new Vector2(0.012f, 1f),
+                primary ? new Color(0.98f, 0.68f, 0.25f) : new Color(0.43f, 0.39f, 0.3f));
+            CreateText(image.transform, "Índice", index, 14, new Vector2(0.04f, 0.08f), new Vector2(0.15f, 0.92f),
+                TextAnchor.MiddleCenter, primary ? new Color(1f, 0.76f, 0.38f) : new Color(0.62f, 0.59f, 0.5f), FontStyle.Bold);
+            CreateImage(image.transform, "Divisor", new Vector2(0.17f, 0.2f), new Vector2(0.173f, 0.8f),
+                new Color(0.76f, 0.64f, 0.43f, 0.42f));
+            CreateText(image.transform, "Label", label, 18, new Vector2(0.21f, 0.43f), new Vector2(0.82f, 0.9f),
+                TextAnchor.MiddleLeft, new Color(1f, 0.96f, 0.87f), FontStyle.Bold);
+            CreateText(image.transform, "Descrição", subtitle, 12, new Vector2(0.21f, 0.08f), new Vector2(0.82f, 0.47f),
+                TextAnchor.MiddleLeft, new Color(0.72f, 0.69f, 0.61f), FontStyle.Normal);
+            CreateText(image.transform, "Seta", "›", 32, new Vector2(0.86f, 0f), new Vector2(0.96f, 1f),
                 TextAnchor.MiddleCenter, new Color(0.96f, 0.72f, 0.38f), FontStyle.Normal);
             return button;
         }
 
-        static GameObject CreateBlock(string name, Vector3 position, Vector3 scale, Material material)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            go.transform.SetPositionAndRotation(position, Quaternion.identity);
-            go.transform.localScale = scale;
-            go.GetComponent<Renderer>().sharedMaterial = material;
-            Object.DestroyImmediate(go.GetComponent<Collider>());
-            return go;
-        }
-
+        /// <summary>Instancia um FBX numa altura e posição.</summary>
+        /// <param name="path">Caminho do FBX.</param>
+        /// <param name="name">Nome do objeto na cena.</param>
+        /// <param name="parent">Transform pai na hierarquia.</param>
+        /// <param name="bottomCenter">Ponto da base.</param>
+        /// <param name="rotation">Rotação.</param>
+        /// <param name="targetHeight">Altura final.</param>
+        /// <returns>O modelo, ou null.</returns>
         static GameObject CreateModel(string path, string name, Transform parent, Vector3 bottomCenter, Quaternion rotation, float targetHeight)
         {
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
